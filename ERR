@@ -1,35 +1,197 @@
-(dcvc_env) work@main1[cAv1nfuw-session]:~/dcvc/DCVC$ cd ~/dcvc/DCVC/src/cpp
-(dcvc_env) work@main1[cAv1nfuw-session]:~/dcvc/DCVC/src/cpp$ python -m pip install . --no-cache-dir
-Looking in indexes: https://pypi.org/simple, https://pypi.ngc.nvidia.com
-Processing /home/work/dcvc/DCVC/src/cpp
-  Preparing metadata (setup.py) ... error
-  error: subprocess-exited-with-error
-  
-  × python setup.py egg_info did not run successfully.
-  │ exit code: 1
-  ╰─> [15 lines of output]
-      /home/work/dcvc/miniconda3/envs/dcvc_env/lib/python3.12/site-packages/_distutils_hack/__init__.py:53: UserWarning: Reliance on distutils from stdlib is deprecated. Users must rely on setuptools to provide the distutils module. Avoid importing distutils or import setuptools first, and avoid setting SETUPTOOLS_USE_DISTUTILS=stdlib. Register concerns at https://github.com/pypa/setuptools/issues/new?template=distutils-deprecation.yml
-        warnings.warn(
-      Traceback (most recent call last):
-        File "<string>", line 2, in <module>
-        File "<pip-setuptools-caller>", line 14, in <module>
-        File "/home/work/dcvc/miniconda3/envs/dcvc_env/lib/python3.12/site-packages/setuptools/__init__.py", line 23, in <module>
-          from . import logging, monkey
-        File "/home/work/dcvc/miniconda3/envs/dcvc_env/lib/python3.12/site-packages/setuptools/logging.py", line 5, in <module>
-          from . import monkey
-        File "/home/work/dcvc/miniconda3/envs/dcvc_env/lib/python3.12/site-packages/setuptools/monkey.py", line 13, in <module>
-          import distutils.filelist
-        File "/home/work/dcvc/miniconda3/envs/dcvc_env/lib/python3.12/site-packages/distutils/__init__.py", line 1
-          from setuptools._distutils import *\n
-                                              ^
-      SyntaxError: unexpected character after line continuation character
-      [end of output]
-  
-  note: This error originates from a subprocess, and is likely not a problem with pip.
-error: metadata-generation-failed
+Yes — we can make setup.py tolerant so you don’t need sudo to run it. There are two separate problems to understand first:
 
-× Encountered error while generating package metadata.
-╰─> See above for output.
+1. Sudo is not actually required to install into a conda/venv (pip installs into the env). The real blockers are missing compilers/nvcc or a broken build environment (setuptools/distutils issues you hit earlier).
 
-note: This is an issue with the package mentioned above, not pip.
-hint: See above for details.
+
+2. If you can’t (or don’t want to) compile C++/CUDA extensions, the easy route is to skip building the extension and let the repository use its pure-Python fallback. We can make setup.py detect that situation and not attempt to build the extension — that avoids build errors and does not require sudo.
+
+
+
+Below I give:
+
+a drop-in replacement setup.py that safely skips building the extension when compilation is impossible or when an environment flag is set; and
+
+exact commands to use the changed file from your conda env (no sudo).
+
+
+
+---
+
+Strategy
+
+The new setup.py:
+
+tries to import pybind11 and the pybind11 helpers;
+
+respects an environment variable DCVC_FORCE_PY_FALLBACK=1 to intentionally skip building;
+
+if pybind11 is not present or the user requested fallback it will not register any extension modules (so pip install . becomes a pure-Python install and won’t try to compile anything);
+
+prints clear messages so you know what path was taken.
+
+
+This is safe: it does not delete or change any system files. It simply prevents compilation. The repo’s runtime code should detect the absence of compiled extensions and use pure-PyTorch fallbacks (we already saw this behavior in the repo). If your runtime does import the compiled module unconditionally, tell me where that import happens and I’ll show how to guard it.
+
+
+---
+
+Replace your src/cpp/setup.py with this file
+
+# src/cpp/setup.py
+# Modified to avoid forcing compilation when not available or when fallback is requested.
+# Copyright (c) Microsoft Corporation.
+# Licensed under the MIT License.
+
+import glob
+import sys
+import os
+from setuptools import setup
+
+# allow user to explicitly force Python fallback (skip C++ ext build)
+_FORCE_FALLBACK = os.environ.get("DCVC_FORCE_PY_FALLBACK", os.environ.get("DCVC_FORCE_PY_FALLBACK".lower(), "0")) == "1"
+
+# try to import pybind11 helpers; if missing, we'll skip building extensions
+_have_pybind11 = False
+Pybind11Extension = None
+build_ext = None
+if not _FORCE_FALLBACK:
+    try:
+        from pybind11.setup_helpers import Pybind11Extension, build_ext  # type: ignore
+        _have_pybind11 = True
+    except Exception as e:
+        # pybind11 not available / cannot import -> do not attempt to compile
+        _have_pybind11 = False
+        print("pybind11 import failed or not present; will skip building C++ extensions.", file=sys.stderr)
+        print(f"pybind11 import error: {e}", file=sys.stderr)
+
+# set compile/link args
+if sys.platform == "win32":
+    extra_compile_args = ['/std:c++17', '/O2', '/W4', '/WX', '/wd4100']
+    extra_link_args = []
+else:
+    extra_compile_args = ['-std=c++17', '-O3', '-fPIC', '-Wall', '-Wextra']  # removed -Werror to be less brittle
+    extra_link_args = []
+
+ext_modules = []
+cmdclass = {}
+
+if _have_pybind11:
+    # prepare the pybind11 extension as before
+    ext_modules = [
+        Pybind11Extension(
+            name='MLCodec_extensions_cpp',
+            sources=glob.glob('py_rans/*.cpp'),
+            extra_compile_args=extra_compile_args,
+            extra_link_args=extra_link_args,
+        ),
+    ]
+    cmdclass = {"build_ext": build_ext}
+    print("pybind11 detected: C++ extension will be built.", file=sys.stderr)
+else:
+    # No extension; install as pure-Python package (fallback)
+    ext_modules = []
+    cmdclass = {}
+    if _FORCE_FALLBACK:
+        print("DCVC_FORCE_PY_FALLBACK=1 detected: skipping C++ extension build (pure-Python fallback).", file=sys.stderr)
+    else:
+        print("C++ extension not built: code will install without compiled ops. To build, install pybind11 and compilers.", file=sys.stderr)
+
+setup(
+    name="MLCodec_extensions_cpp",
+    ext_modules=ext_modules,
+    cmdclass=cmdclass,
+    zip_safe=False,
+    python_requires=">=3.12",
+)
+
+Notes on changes
+
+I removed -Werror from compile args to make builds less likely to fail on warnings — this helps when compilers/platforms differ.
+
+The file checks an environment variable DCVC_FORCE_PY_FALLBACK=1 (you can set this before pip install .) to force skipping of the extension.
+
+If pybind11 is missing, the script prints helpful messages and proceeds without extensions.
+
+
+
+---
+
+How to use this (no sudo required)
+
+1. Put the modified setup.py into src/cpp/ (overwrite the existing one).
+
+
+2. Activate your conda env (no sudo):
+
+
+
+conda activate dcvc_env
+
+3. (Optional) ensure you are not picking up stray ~/.local user-site packages — this avoids setuptools/distutils conflicts you experienced earlier:
+
+
+
+export PYTHONNOUSERSITE=1
+
+4. If you do want to force the Python fallback (skip compilation), set:
+
+
+
+export DCVC_FORCE_PY_FALLBACK=1
+
+5. From src/cpp run:
+
+
+
+python -m pip install . --no-cache-dir
+
+Because _have_pybind11 is false (or you set DCVC_FORCE_PY_FALLBACK=1), setup.py will not attempt to compile, so no compiler, nvcc, cmake or sudo is needed. pip will install a (small) package entry for MLCodec_extensions_cpp (without compiled modules).
+
+6. Now go back to repo root and run your test with fallback environment flag too:
+
+
+
+export PYTHONPATH=$PWD/src:$PYTHONPATH
+export DCVC_FORCE_PY_FALLBACK=1
+export PYTHONNOUSERSITE=1
+export CUDA_VISIBLE_DEVICES=""    # CPU only; remove to use GPU if available
+python test_video.py --model_path_i ./checkpoints/cvpr2025_image.pth.tar --model_path_p ./checkpoints/cvpr2025_video.pth.tar --cuda 0
+
+
+---
+
+If you do later get a working compiler & pybind11 and want to build the extension
+
+Remove or unset DCVC_FORCE_PY_FALLBACK, ensure pybind11 is installed in the conda env:
+
+
+python -m pip install pybind11
+conda install -c conda-forge cmake ninja gxx_linux-64 -y   # no sudo, installs into conda env
+python -m pip install .
+
+
+---
+
+Important caveats & follow-ups
+
+Skipping the compiled extension means runtime will use pure-PyTorch implementations — correct but much slower. This is fine for testing, debugging, or correctness checks. For performance you need compiled ops + GPU.
+
+This modified setup.py only suppresses compilation. If other parts of the repo import the compiled module unconditionally (instead of checking for fallback), you may still get ImportError. In most DCVC code there is logic to try to import the compiled extension and fallback gracefully — if you see an unconditional import error, paste the import line location and I’ll show how to guard it.
+
+We changed compile args to be less strict so builds are more tolerant across toolchains; if you eventually build in a proper environment you may want to opt back in to stricter flags.
+
+
+
+---
+
+If you want, I can:
+
+produce the exact git patch (diff) you can git apply to modify src/cpp/setup.py, or
+
+also change the src/layers/extensions/inference/setup.py similarly, or
+
+add a small README snippet in that folder to show how to run DCVC_FORCE_PY_FALLBACK=1 to guarantee fallback.
+
+
+Which would you prefer?
+
