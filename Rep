@@ -1,9 +1,17 @@
-# show the file and the first few lines
-ls -l /home/work/dcvc/miniconda3/envs/dcvc_env/lib/python3.12/site-packages/distutils/__init__.py
-sed -n '1,80p' /home/work/dcvc/miniconda3/envs/dcvc_env/lib/python3.12/site-packages/distutils/__init__.py
-
-
-
-
-conda activate dcvc_env
-python -c "import distutils, sys; print('OK: distutils from', distutils.__file__, 'python', sys.version)"
+python - <<'PY'
+import sys, site
+print("python:", sys.executable)
+print("python version:", sys.version.splitlines()[0])
+import pkgutil
+try:
+    import setuptools, distutils
+    print("setuptools file:", setuptools.__file__)
+    print("distutils file:", distutils.__file__)
+except Exception as e:
+    print("import error (setuptools/distutils):", e)
+print("user site:", site.getusersitepackages())
+print("sys.path entries containing '.local' or 'site-packages':")
+for p in sys.path:
+    if p and ('.local' in p or 'site-packages' in p):
+        print("  ", p)
+PY
