@@ -1,155 +1,36 @@
-Got it 👍 — if you’re typing this manually instead of copy-paste, here’s exactly where you need to hit Enter.
-
-Think of it as type one command (or block), then press Enter once, wait for it to finish, then type the next.
-
-
----
-
-Step-by-step with Enter points
-
-1. Activate your env
-
-
-
-conda activate dcvc_env
-
-👉 Press Enter
-
-
----
-
-2. Set environment variables (these are separate lines)
-
-
-
-export PYTHONNOUSERSITE=1
-
-👉 Press Enter
-
-export SETUPTOOLS_USE_DISTUTILS=stdlib
-
-👉 Press Enter
-
-
----
-
-3. (Optional) unset any old PYTHONPATH
-
-
-
-unset PYTHONPATH
-
-👉 Press Enter
-
-
----
-
-4. Show diagnostic info (this is a multi-line Python snippet — type python - then press Enter, then copy what’s inside until PY, then press Enter again to finish)
-
-
-
-python - <<'PY'
-import sys, site
-print("python:", sys.executable)
-print("python version:", sys.version.splitlines()[0])
-import pkgutil
-try:
-    import setuptools, distutils
-    print("setuptools file:", setuptools.__file__)
-    print("distutils file:", distutils.__file__)
-except Exception as e:
-    print("import error (setuptools/distutils):", e)
-print("user site:", site.getusersitepackages())
-print("sys.path entries containing '.local' or 'site-packages':")
-for p in sys.path:
-    if p and ('.local' in p or 'site-packages' in p):
-        print("  ", p)
-PY
-
-👉 Here you:
-
-Type python - <<'PY' then Enter
-
-Then type/paste the indented Python lines down to the final PY
-
-Then Enter on a blank line after PY to execute
-
-
-
----
-
-5. Back up user site packages
-
-
-
-mv ~/.local/lib/python3.10 ~/.local/lib/python3.10.bak
-
-👉 Press Enter
-
-(If it says “No such file or directory”, ignore and continue.)
-
-
----
-
-6. Reinstall packaging tools
-
-
-
-python -m pip install --upgrade --force-reinstall pip setuptools wheel setuptools_scm --no-cache-dir
-
-👉 Press Enter
-
-
----
-
-7. Install the C++ extension
-Move into the cpp directory:
-
-
-
-cd ~/dcvc/DCVC/src/cpp
-
-👉 Press Enter
-
-Then install:
-
-python -m pip install . --no-cache-dir
-
-👉 Press Enter
-
-
----
-
-8. If step 7 succeeds, install the inference extension
-
-
-
-cd ../layers/extensions/inference
-
-👉 Press Enter
-
-python -m pip install . --no-cache-dir
-
-👉 Press Enter
-
-
----
-
-9. Restore your old user-site folder (optional, if you moved it earlier)
-
-
-
-mv ~/.local/lib/python3.10.bak ~/.local/lib/python3.10
-
-👉 Press Enter
-
-
----
-
-✅ That’s all.
-
-
----
-
-Would you like me to rewrite steps 4 and 5 (the trickier multi-line Python and mv command) in a way that is easier to type manually — e.g. using shorter one-liners?
-
+(dcvc_env) work@main1[cAv1nfuw-session]:~/dcvc/DCVC/src/cpp$ export PYTHONNOUSERSITE=1
+(dcvc_env) work@main1[cAv1nfuw-session]:~/dcvc/DCVC/src/cpp$ export DCVC_FORCE_PY_FALLBACK=1
+(dcvc_env) work@main1[cAv1nfuw-session]:~/dcvc/DCVC/src/cpp$ python -m pip install . --no-cache-dir
+Looking in indexes: https://pypi.org/simple, https://pypi.ngc.nvidia.com
+Processing /home/work/dcvc/DCVC/src/cpp
+  Preparing metadata (setup.py) ... error
+  error: subprocess-exited-with-error
+  
+  × python setup.py egg_info did not run successfully.
+  │ exit code: 1
+  ╰─> [15 lines of output]
+      /home/work/dcvc/miniconda3/envs/dcvc_env/lib/python3.12/site-packages/_distutils_hack/__init__.py:53: UserWarning: Reliance on distutils from stdlib is deprecated. Users must rely on setuptools to provide the distutils module. Avoid importing distutils or import setuptools first, and avoid setting SETUPTOOLS_USE_DISTUTILS=stdlib. Register concerns at https://github.com/pypa/setuptools/issues/new?template=distutils-deprecation.yml
+        warnings.warn(
+      Traceback (most recent call last):
+        File "<string>", line 2, in <module>
+        File "<pip-setuptools-caller>", line 14, in <module>
+        File "/home/work/dcvc/miniconda3/envs/dcvc_env/lib/python3.12/site-packages/setuptools/__init__.py", line 23, in <module>
+          from . import logging, monkey
+        File "/home/work/dcvc/miniconda3/envs/dcvc_env/lib/python3.12/site-packages/setuptools/logging.py", line 5, in <module>
+          from . import monkey
+        File "/home/work/dcvc/miniconda3/envs/dcvc_env/lib/python3.12/site-packages/setuptools/monkey.py", line 13, in <module>
+          import distutils.filelist
+        File "/home/work/dcvc/miniconda3/envs/dcvc_env/lib/python3.12/site-packages/distutils/__init__.py", line 1
+          from setuptools._distutils import *\n
+                                              ^
+      SyntaxError: unexpected character after line continuation character
+      [end of output]
+  
+  note: This error originates from a subprocess, and is likely not a problem with pip.
+error: metadata-generation-failed
+
+× Encountered error while generating package metadata.
+╰─> See above for output.
+
+note: This is an issue with the package mentioned above, not pip.
+hint: See above for details.
