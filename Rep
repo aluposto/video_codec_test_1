@@ -1,70 +1,19 @@
-Thanks — that error is caused by missing distutils, which recent Python versions (including 3.12) no longer ship in the stdlib the old way. pip install calls into setuptools which expects distutils, so the build fails while running setup.py.
+conda activate dcvc_env
 
-You can fix this without sudo. Try one of the two options below (I recommend Option A first).
-
-
----
-
-Option A — add distutils into your conda env (no sudo) — recommended
-
-Run these in your conda env:
-
-conda activate dcvc_env         # or your env name
-
-# install distutils + build essentials from conda-forge
-conda install -c conda-forge python-distutils setuptools wheel pip build -y
-
-# optional: install/upgrade cmake/ninja/gxx if you haven't
-conda install -c conda-forge cmake ninja gxx_linux-64 -y
-
-# upgrade pip/setuptools/wheel just in case
+# upgrade pip/setuptools/wheel to latest
 python -m pip install --upgrade pip setuptools wheel
 
-# then retry the local install
-cd /home/work/dcvc/DCVC/src/cpp
-pip install .
+# verify setuptools version (want a recent one)
+python -c "import setuptools, sys; print('setuptools', setuptools.__version__, 'python', sys.version)"
 
-That should provide the distutils module in your environment and allow setup.py to run.
-
-
----
-
-Option B — create a Python 3.11 env (fallback)
-
-If Option A fails or you prefer stability, create an env with Python 3.11 (distutils is available/compatible):
-
-conda create -n dcvc_py311 python=3.11 -y
-conda activate dcvc_py311
-conda install -c conda-forge cmake ninja gxx_linux-64 python-distutils setuptools wheel pip -y
-python -m pip install --upgrade pip setuptools wheel
-cd /home/work/dcvc/DCVC/src/cpp
-pip install .
-
-Then repeat for the other pip install . under layers/extensions/inference/.
-
-
----
-
-Extra tips / troubleshooting
-
-If you still see setuptools-related warnings, set this (temporary) before pip install:
-
-export SETUPTOOLS_USE_DISTUTILS=stdlib
-
-(Only use this as a fallback — the conda python-distutils approach is better.)
-
-If the error message changes, paste the new traceback here and I’ll decode it.
-
-After successful install, build the other extension similarly:
-
-cd src/layers/extensions/inference
-pip install .
-
-If you hit CUDA build errors later, make sure your conda gxx matches your CUDA toolkit and that your CUDA_HOME/PATH point to the CUDA installation accessible to your user.
-
-
-
----
-
-If you want, tell me which option you tried and paste the new error (if any) — I’ll give the exact next steps.
-
+# quick smoke-test: does setuptools expose distutils?
+python - <<'PY'
+import importlib, sys
+try:
+    import setuptools
+    import distutils
+    print('distutils import OK,', distutils.__file__)
+except Exception as e:
+    print('distutils import failed:', type(e).__name__, e)
+    sys.exit(1)
+PY
