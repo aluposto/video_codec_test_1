@@ -1,6 +1,4 @@
-(dcvc_env) work@main1[cAv1nfuw-session]:~/dcvc/DCVC$ cd src/cpp
-(dcvc_env) work@main1[cAv1nfuw-session]:~/dcvc/DCVC/src/cpp$ export PYTHONNOUSERSITE=1
-(dcvc_env) work@main1[cAv1nfuw-session]:~/dcvc/DCVC/src/cpp$ export SETUPTOOLS_USE_DISTUTLIS=stdlib
+(dcvc_env) work@main1[cAv1nfuw-session]:~/dcvc/DCVC$ cd ~/dcvc/DCVC/src/cpp
 (dcvc_env) work@main1[cAv1nfuw-session]:~/dcvc/DCVC/src/cpp$ python -m pip install . --no-cache-dir
 Looking in indexes: https://pypi.org/simple, https://pypi.ngc.nvidia.com
 Processing /home/work/dcvc/DCVC/src/cpp
@@ -10,16 +8,16 @@ Processing /home/work/dcvc/DCVC/src/cpp
   × python setup.py egg_info did not run successfully.
   │ exit code: 1
   ╰─> [15 lines of output]
-      /home/work/.local/lib/python3.10/site-packages/_distutils_hack/__init__.py:53: UserWarning: Reliance on distutils from stdlib is deprecated. Users must rely on setuptools to provide the distutils module. Avoid importing distutils or import setuptools first, and avoid setting SETUPTOOLS_USE_DISTUTILS=stdlib. Register concerns at https://github.com/pypa/setuptools/issues/new?template=distutils-deprecation.yml
+      /home/work/dcvc/miniconda3/envs/dcvc_env/lib/python3.12/site-packages/_distutils_hack/__init__.py:53: UserWarning: Reliance on distutils from stdlib is deprecated. Users must rely on setuptools to provide the distutils module. Avoid importing distutils or import setuptools first, and avoid setting SETUPTOOLS_USE_DISTUTILS=stdlib. Register concerns at https://github.com/pypa/setuptools/issues/new?template=distutils-deprecation.yml
         warnings.warn(
       Traceback (most recent call last):
         File "<string>", line 2, in <module>
         File "<pip-setuptools-caller>", line 14, in <module>
-        File "/home/work/.local/lib/python3.10/site-packages/setuptools/__init__.py", line 23, in <module>
+        File "/home/work/dcvc/miniconda3/envs/dcvc_env/lib/python3.12/site-packages/setuptools/__init__.py", line 23, in <module>
           from . import logging, monkey
-        File "/home/work/.local/lib/python3.10/site-packages/setuptools/logging.py", line 5, in <module>
+        File "/home/work/dcvc/miniconda3/envs/dcvc_env/lib/python3.12/site-packages/setuptools/logging.py", line 5, in <module>
           from . import monkey
-        File "/home/work/.local/lib/python3.10/site-packages/setuptools/monkey.py", line 13, in <module>
+        File "/home/work/dcvc/miniconda3/envs/dcvc_env/lib/python3.12/site-packages/setuptools/monkey.py", line 13, in <module>
           import distutils.filelist
         File "/home/work/dcvc/miniconda3/envs/dcvc_env/lib/python3.12/site-packages/distutils/__init__.py", line 1
           from setuptools._distutils import *\n
