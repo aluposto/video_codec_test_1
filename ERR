@@ -1,8 +1,12 @@
-(dcvc_env) work@main1[cAv1nfuw-session]:~/dcvc/DCVC$ python test_video.py \
-    --i_frame_model_path ./checkpoints/cvpr2023_image_ssim.pth.tar \
-    --p_frame_model_path ./checkpoints/cvpr2023_video_ssim.pth.tar \
- --rate_num 2 \
-  --test_config ./DCVC-DC/dataset_config_example_yuv420.json \
+(dcvc_env) work@main1[cAv1nfuw-session]:~/dcvc/DCVC$ export OUTJSON=./out_results.json   
+PYTHONPATH=$PWD/src:$PYTHONPATH \
+DCVC_FORCE_PY_FALLBACK=1 \
+CUDA_VISIBLE_DEVICES="" \
+python test_video.py \
+  --model_path_i ./checkpoints/cvpr2025_image.pth.tar \
+  --model_path_p ./checkpoints/cvpr2025_video.pth.tar \
+  --rate_num 2 \
+  --test_config ./dataset_config_example_yuv420.json \
   --cuda 0 \
   -w 1 \
   --write_stream 1 \
@@ -15,10 +19,30 @@
   --check_existing 0 \
   --verbose 1
 cannot import cuda implementation for inference, fallback to pytorch.
-usage: test_video.py [-h] [--force_zero_thres FORCE_ZERO_THRES] [--model_path_i MODEL_PATH_I] [--model_path_p MODEL_PATH_P] [--rate_num RATE_NUM]
-                     [--qp_i QP_I [QP_I ...]] [--qp_p QP_P [QP_P ...]] [--force_intra FORCE_INTRA] [--force_frame_num FORCE_FRAME_NUM]
-                     [--force_intra_period FORCE_INTRA_PERIOD] [--reset_interval RESET_INTERVAL] --test_config TEST_CONFIG [--force_root_path FORCE_ROOT_PATH]
-                     [--worker WORKER] [--cuda CUDA] [--cuda_idx CUDA_IDX [CUDA_IDX ...]] [--calc_ssim CALC_SSIM] [--write_stream WRITE_STREAM]
-                     [--check_existing CHECK_EXISTING] [--stream_path STREAM_PATH] [--save_decoded_frame SAVE_DECODED_FRAME] --output_path OUTPUT_PATH
-                     [--verbose_json VERBOSE_JSON] [--verbose VERBOSE]
-test_video.py: error: unrecognized arguments: --i_frame_model_path ./checkpoints/cvpr2023_image_ssim.pth.tar --p_frame_model_path ./checkpoints/cvpr2023_video_ssim.pth.tar
+testing 2 rates, using qp: 0, 63, 
+  0%|                                                                                                                                      | 0/106 [00:00<?, ?it/s]cannot import cuda implementation for inference, fallback to pytorch.
+Exception in initializer:
+Traceback (most recent call last):
+  File "/home/work/dcvc/miniconda3/envs/dcvc_env/lib/python3.12/concurrent/futures/process.py", line 243, in _process_worker
+    initializer(*initargs)
+  File "/home/work/dcvc/DCVC/test_video.py", line 403, in init_func
+    i_frame_net.update(args.force_zero_thres)
+  File "/home/work/dcvc/DCVC/src/models/common_model.py", line 50, in update
+    self.entropy_coder = EntropyCoder()
+                         ^^^^^^^^^^^^^^
+  File "/home/work/dcvc/DCVC/src/models/entropy_models.py", line 15, in __init__
+    from MLCodec_extensions_cpp import RansEncoder, RansDecoder
+ModuleNotFoundError: No module named 'MLCodec_extensions_cpp'
+  0%|                                                                                                                                      | 0/106 [00:04<?, ?it/s]
+Traceback (most recent call last):
+  File "/home/work/dcvc/DCVC/test_video.py", line 541, in <module>
+    main()
+  File "/home/work/dcvc/DCVC/test_video.py", line 514, in main
+    result = obj.result()
+             ^^^^^^^^^^^^
+  File "/home/work/dcvc/miniconda3/envs/dcvc_env/lib/python3.12/concurrent/futures/_base.py", line 456, in result
+    return self.__get_result()
+           ^^^^^^^^^^^^^^^^^^^
+  File "/home/work/dcvc/miniconda3/envs/dcvc_env/lib/python3.12/concurrent/futures/_base.py", line 401, in __get_result
+    raise self._exception
+concurrent.futures.process.BrokenProcessPool: A process in the process pool was terminated abruptly while the future was running or pending.
