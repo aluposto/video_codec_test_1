@@ -1,19 +1,16 @@
-conda activate dcvc_env
-
-# upgrade pip/setuptools/wheel to latest
-python -m pip install --upgrade pip setuptools wheel
-
-# verify setuptools version (want a recent one)
-python -c "import setuptools, sys; print('setuptools', setuptools.__version__, 'python', sys.version)"
-
-# quick smoke-test: does setuptools expose distutils?
 python - <<'PY'
-import importlib, sys
-try:
-    import setuptools
-    import distutils
-    print('distutils import OK,', distutils.__file__)
-except Exception as e:
-    print('distutils import failed:', type(e).__name__, e)
-    sys.exit(1)
+import sys, os
+major = sys.version_info.major
+minor = sys.version_info.minor
+site_packages = os.path.join(sys.prefix, "lib", f"python{major}.{minor}", "site-packages")
+if not os.path.isdir(site_packages):
+    # sometimes site-packages path differs (conda env layout) — try alternative
+    site_packages = os.path.join(sys.prefix, "lib", "python" + str(major) + "." + str(minor), "site-packages")
+os.makedirs(site_packages, exist_ok=True)
+distutils_dir = os.path.join(site_packages, "distutils")
+os.makedirs(distutils_dir, exist_ok=True)
+init_file = os.path.join(distutils_dir, "__init__.py")
+with open(init_file, "w") as f:
+    f.write("from setuptools._distutils import *\\n")
+print('Wrote proxy distutils to:', init_file)
 PY
