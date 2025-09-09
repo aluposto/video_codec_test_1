@@ -1,3 +1,8 @@
+(dcvc_env) work@main1[cAv1nfuw-session]:~/dcvc/DCVC$ cd src/cpp
+(dcvc_env) work@main1[cAv1nfuw-session]:~/dcvc/DCVC/src/cpp$ export PYTHONNOUSERSITE=1
+(dcvc_env) work@main1[cAv1nfuw-session]:~/dcvc/DCVC/src/cpp$ export SETUPTOOLS_USE_DISTUTLIS=stdlib
+(dcvc_env) work@main1[cAv1nfuw-session]:~/dcvc/DCVC/src/cpp$ python -m pip install . --no-cache-dir
+Looking in indexes: https://pypi.org/simple, https://pypi.ngc.nvidia.com
 Processing /home/work/dcvc/DCVC/src/cpp
   Preparing metadata (setup.py) ... error
   error: subprocess-exited-with-error
