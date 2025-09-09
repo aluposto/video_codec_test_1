@@ -1,16 +1,3 @@
-python - <<'PY'
-import sys, os
-major = sys.version_info.major
-minor = sys.version_info.minor
-site_packages = os.path.join(sys.prefix, "lib", f"python{major}.{minor}", "site-packages")
-if not os.path.isdir(site_packages):
-    # sometimes site-packages path differs (conda env layout) — try alternative
-    site_packages = os.path.join(sys.prefix, "lib", "python" + str(major) + "." + str(minor), "site-packages")
-os.makedirs(site_packages, exist_ok=True)
-distutils_dir = os.path.join(site_packages, "distutils")
-os.makedirs(distutils_dir, exist_ok=True)
-init_file = os.path.join(distutils_dir, "__init__.py")
-with open(init_file, "w") as f:
-    f.write("from setuptools._distutils import *\\n")
-print('Wrote proxy distutils to:', init_file)
-PY
+# show the file and the first few lines
+ls -l /home/work/dcvc/miniconda3/envs/dcvc_env/lib/python3.12/site-packages/distutils/__init__.py
+sed -n '1,80p' /home/work/dcvc/miniconda3/envs/dcvc_env/lib/python3.12/site-packages/distutils/__init__.py
