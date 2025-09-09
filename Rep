@@ -1,3 +1,53 @@
+Got it 👍 — if you’re typing this manually instead of copy-paste, here’s exactly where you need to hit Enter.
+
+Think of it as type one command (or block), then press Enter once, wait for it to finish, then type the next.
+
+
+---
+
+Step-by-step with Enter points
+
+1. Activate your env
+
+
+
+conda activate dcvc_env
+
+👉 Press Enter
+
+
+---
+
+2. Set environment variables (these are separate lines)
+
+
+
+export PYTHONNOUSERSITE=1
+
+👉 Press Enter
+
+export SETUPTOOLS_USE_DISTUTILS=stdlib
+
+👉 Press Enter
+
+
+---
+
+3. (Optional) unset any old PYTHONPATH
+
+
+
+unset PYTHONPATH
+
+👉 Press Enter
+
+
+---
+
+4. Show diagnostic info (this is a multi-line Python snippet — type python - then press Enter, then copy what’s inside until PY, then press Enter again to finish)
+
+
+
 python - <<'PY'
 import sys, site
 print("python:", sys.executable)
@@ -15,3 +65,91 @@ for p in sys.path:
     if p and ('.local' in p or 'site-packages' in p):
         print("  ", p)
 PY
+
+👉 Here you:
+
+Type python - <<'PY' then Enter
+
+Then type/paste the indented Python lines down to the final PY
+
+Then Enter on a blank line after PY to execute
+
+
+
+---
+
+5. Back up user site packages
+
+
+
+mv ~/.local/lib/python3.10 ~/.local/lib/python3.10.bak
+
+👉 Press Enter
+
+(If it says “No such file or directory”, ignore and continue.)
+
+
+---
+
+6. Reinstall packaging tools
+
+
+
+python -m pip install --upgrade --force-reinstall pip setuptools wheel setuptools_scm --no-cache-dir
+
+👉 Press Enter
+
+
+---
+
+7. Install the C++ extension
+Move into the cpp directory:
+
+
+
+cd ~/dcvc/DCVC/src/cpp
+
+👉 Press Enter
+
+Then install:
+
+python -m pip install . --no-cache-dir
+
+👉 Press Enter
+
+
+---
+
+8. If step 7 succeeds, install the inference extension
+
+
+
+cd ../layers/extensions/inference
+
+👉 Press Enter
+
+python -m pip install . --no-cache-dir
+
+👉 Press Enter
+
+
+---
+
+9. Restore your old user-site folder (optional, if you moved it earlier)
+
+
+
+mv ~/.local/lib/python3.10.bak ~/.local/lib/python3.10
+
+👉 Press Enter
+
+
+---
+
+✅ That’s all.
+
+
+---
+
+Would you like me to rewrite steps 4 and 5 (the trickier multi-line Python and mv command) in a way that is easier to type manually — e.g. using shorter one-liners?
+
