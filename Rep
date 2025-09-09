@@ -1,36 +1,76 @@
-(dcvc_env) work@main1[cAv1nfuw-session]:~/dcvc/DCVC/src/cpp$ export PYTHONNOUSERSITE=1
-(dcvc_env) work@main1[cAv1nfuw-session]:~/dcvc/DCVC/src/cpp$ export DCVC_FORCE_PY_FALLBACK=1
-(dcvc_env) work@main1[cAv1nfuw-session]:~/dcvc/DCVC/src/cpp$ python -m pip install . --no-cache-dir
-Looking in indexes: https://pypi.org/simple, https://pypi.ngc.nvidia.com
-Processing /home/work/dcvc/DCVC/src/cpp
-  Preparing metadata (setup.py) ... error
-  error: subprocess-exited-with-error
-  
-  × python setup.py egg_info did not run successfully.
-  │ exit code: 1
-  ╰─> [15 lines of output]
-      /home/work/dcvc/miniconda3/envs/dcvc_env/lib/python3.12/site-packages/_distutils_hack/__init__.py:53: UserWarning: Reliance on distutils from stdlib is deprecated. Users must rely on setuptools to provide the distutils module. Avoid importing distutils or import setuptools first, and avoid setting SETUPTOOLS_USE_DISTUTILS=stdlib. Register concerns at https://github.com/pypa/setuptools/issues/new?template=distutils-deprecation.yml
-        warnings.warn(
-      Traceback (most recent call last):
-        File "<string>", line 2, in <module>
-        File "<pip-setuptools-caller>", line 14, in <module>
-        File "/home/work/dcvc/miniconda3/envs/dcvc_env/lib/python3.12/site-packages/setuptools/__init__.py", line 23, in <module>
-          from . import logging, monkey
-        File "/home/work/dcvc/miniconda3/envs/dcvc_env/lib/python3.12/site-packages/setuptools/logging.py", line 5, in <module>
-          from . import monkey
-        File "/home/work/dcvc/miniconda3/envs/dcvc_env/lib/python3.12/site-packages/setuptools/monkey.py", line 13, in <module>
-          import distutils.filelist
-        File "/home/work/dcvc/miniconda3/envs/dcvc_env/lib/python3.12/site-packages/distutils/__init__.py", line 1
-          from setuptools._distutils import *\n
-                                              ^
-      SyntaxError: unexpected character after line continuation character
-      [end of output]
-  
-  note: This error originates from a subprocess, and is likely not a problem with pip.
-error: metadata-generation-failed
+Yes — we can remove the C++ dependency entirely so you never need to build or install any C++/pybind11 code. There are two practical approaches (pick one):
 
-× Encountered error while generating package metadata.
-╰─> See above for output.
+A — recommended, safest: don’t build anything and force the repo to use its pure-Python fallbacks at runtime. Minimal edits, guaranteed safe.
+B — aggressive: remove/neutralize all compile-time extension code and add Python stubs so imports never fail (more invasive; may require patching a few files).
 
-note: This is an issue with the package mentioned above, not pip.
-hint: See above for details.
+I’ll give both approaches with exact commands you can run. If you want me to apply approach B automatically, I can generate the specific file edits — but I’ll need to see where the repo imports the compiled extension (I show a grep command below you can run and paste results from).
+
+
+---
+
+Approach A — Force pure-Python fallback (no C++ at all)
+
+This is the easiest and preferred route: don’t build C++ and make the runtime use the already-provided Python implementations.
+
+1. Make setup.py a no-op (optional) — prevents accidental builds. If you haven’t already, replace src/cpp/setup.py with the safe no-op version I gave earlier (or just leave it; you’ll set env var below to skip builds).
+
+
+2. Always run DCVC with the fallback env var so code paths that check for extensions will use the Python versions:
+
+
+
+# from repo root
+export PYTHONNOUSERSITE=1           # avoid stray ~/.local packages
+export DCVC_FORCE_PY_FALLBACK=1    # force pure-Python fallback
+export PYTHONPATH=$PWD/src:$PYTHONPATH
+
+# optional: CPU-only
+export CUDA_VISIBLE_DEVICES=""
+
+python test_video.py \
+  --model_path_i ./checkpoints/cvpr2025_image.pth.tar \
+  --model_path_p ./checkpoints/cvpr2025_video.pth.tar \
+  --test_config ./dataset_config_example_yuv420.json \
+  --cuda 0
+
+3. Skip the C++ install steps — don’t run pip install . under src/cpp or the inference extension. If you’ve already installed a broken extension, uninstall it:
+
+
+
+python -m pip uninstall MLCodec_extensions_cpp -y 2>/dev/null || true
+# if inference extension has a name, uninstall similarly
+
+4. Verify at runtime — the code will normally print messages like “cannot import cuda implementation for inference, fallback to pytorch” or similar. If you see that message and your run proceeds, C++ has been fully avoided.
+
+
+
+> Why approach A: it’s the least invasive and keeps code intact. The DCVC repo already includes pure-PyTorch fallbacks — this is how the authors intended users without compilers to run it.
+
+
+
+
+---
+
+Approach B — Remove/neutralize C++ dependency and add Python stubs
+
+If you need to make the repo not reference C++ at all (e.g., because some imports crash the process even before the fallback check), use this approach:
+
+Plan
+
+1. Find every import of the compiled extension(s).
+
+
+2. Replace those imports with a guarded try/except that sets a flag (so code uses Python fallback).
+
+
+3. Optionally add a small shim/stub module with the compiled module name that routes calls to Python functions (if code imports symbols with from module import name and you want minimal edits).
+
+
+
+Step 1 — locate imports (run this and paste output or inspect) From repo root run:
+
+# find direct imports of suspected compiled modules
+grep -RIn "MLCodec_extensions_cpp" -n src || true
+grep -RIn "extensions_cpp" -n src || true
+# also search for likely compiled extension
+
