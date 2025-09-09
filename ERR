@@ -1,29 +1,9 @@
-Channels:
- - conda-forge
- - defaults
-Platform: linux-64
-Collecting package metadata (repodata.json): done
-Solving environment: warning  libmamba Added empty dependency for problem type SOLVER_RULE_UPDATE
-failed
+/bin/bash: line 1: warning: here-document at line 1 delimited by end-of-file (wanted `PY')
+distutils import failed: ModuleNotFoundError No module named 'distutils'
+/home/work/.local/lib/python3.10/site-packages/_distutils_hack/__init__.py:53: UserWarning: Reliance on distutils from stdlib is deprecated. Users must rely on setuptools to provide the distutils module. Avoid importing distutils or import setuptools first, and avoid setting SETUPTOOLS_USE_DISTUTILS=stdlib. Register concerns at https://github.com/pypa/setuptools/issues/new?template=distutils-deprecation.yml
+  warnings.warn(
+An exception has occurred, use %tb to see the full traceback.
 
-LibMambaUnsatisfiableError: Encountered problems while solving:
-  - nothing provides requested python-distutils
-  - package build-0.10.0-py310h06a4308_0 requires python >=3.10,<3.11.0a0, but none of the providers can be installed
-
-Could not solve for environment specs
-The following packages are incompatible
-├─ build is installable with the potential options
-│  ├─ build 0.10.0 would require
-│  │  └─ python >=3.10,<3.11.0a0 , which can be installed;
-│  ├─ build 0.10.0 would require
-│  │  └─ python >=3.11,<3.12.0a0 , which can be installed;
-│  ├─ build 0.10.0 would require
-│  │  └─ python >=3.8,<3.9.0a0 , which can be installed;
-│  └─ build 0.10.0 would require
-│     └─ python >=3.9,<3.10.0a0 , which can be installed;
-├─ pin-1 is not installable because it requires
-│  └─ python 3.12.* , which conflicts with any installable versions previously reported;
-└─ python-distutils does not exist (perhaps a typo or a missing channel).
-
-
-Note: you may need to restart the kernel to use updated packages.
+SystemExit: 1
+/home/work/dcvc/miniconda3/envs/dcvc_env/lib/python3.12/site-packages/IPython/core/interactiveshell.py:3707: UserWarning: To exit: use 'exit', 'quit', or Ctrl-D.
+  warn("To exit: use 'exit', 'quit', or Ctrl-D.", stacklevel=1)
