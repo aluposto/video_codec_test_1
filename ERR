@@ -1,9 +1,10 @@
 /bin/bash: line 1: warning: here-document at line 1 delimited by end-of-file (wanted `PY')
-distutils import failed: ModuleNotFoundError No module named 'distutils'
-/home/work/.local/lib/python3.10/site-packages/_distutils_hack/__init__.py:53: UserWarning: Reliance on distutils from stdlib is deprecated. Users must rely on setuptools to provide the distutils module. Avoid importing distutils or import setuptools first, and avoid setting SETUPTOOLS_USE_DISTUTILS=stdlib. Register concerns at https://github.com/pypa/setuptools/issues/new?template=distutils-deprecation.yml
-  warnings.warn(
-An exception has occurred, use %tb to see the full traceback.
+Wrote proxy distutils to: /home/work/dcvc/miniconda3/envs/dcvc_env/lib/python3.12/site-packages/distutils/__init__.py
+---------------------------------------------------------------------------
+NameError                                 Traceback (most recent call last)
+Cell In[13], line 16
+     14     f.write("from setuptools._distutils import *\\n")
+     15 print('Wrote proxy distutils to:', init_file)
+---> 16 PY
 
-SystemExit: 1
-/home/work/dcvc/miniconda3/envs/dcvc_env/lib/python3.12/site-packages/IPython/core/interactiveshell.py:3707: UserWarning: To exit: use 'exit', 'quit', or Ctrl-D.
-  warn("To exit: use 'exit', 'quit', or Ctrl-D.", stacklevel=1)
+NameError: name 'PY' is not defined
