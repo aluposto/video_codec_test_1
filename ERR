@@ -1,4 +1,3 @@
-Looking in indexes: https://pypi.org/simple, https://pypi.ngc.nvidia.com
 Processing /home/work/dcvc/DCVC/src/cpp
   Preparing metadata (setup.py) ... error
   error: subprocess-exited-with-error
@@ -31,4 +30,3 @@ error: metadata-generation-failed
 
 note: This is an issue with the package mentioned above, not pip.
 hint: See above for details.
-Note: you may need to restart the kernel to use updated packages.
