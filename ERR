@@ -1,10 +1,2 @@
-/bin/bash: line 1: warning: here-document at line 1 delimited by end-of-file (wanted `PY')
-Wrote proxy distutils to: /home/work/dcvc/miniconda3/envs/dcvc_env/lib/python3.12/site-packages/distutils/__init__.py
----------------------------------------------------------------------------
-NameError                                 Traceback (most recent call last)
-Cell In[13], line 16
-     14     f.write("from setuptools._distutils import *\\n")
-     15 print('Wrote proxy distutils to:', init_file)
----> 16 PY
-
-NameError: name 'PY' is not defined
+<string>:1: DeprecationWarning: The distutils package is deprecated and slated for removal in Python 3.12. Use setuptools or check PEP 632 for potential alternatives
+OK: distutils from /usr/lib/python3.10/distutils/__init__.py python 3.10.12 (main, Jun 11 2023, 05:26:28) [GCC 11.4.0]
