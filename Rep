@@ -1,7 +1,248 @@
-Here’s a polished scope of improvement version for your slide:
+Great — here’s a concise, actionable plan to add gaming, stereoscopic (left/right eye), and saliency-aware foveation into the DCVC-RT architecture. I’ll give (A) the architecture-level changes, (B) concrete implementation hooks (where to modify the repo), (C) training + loss changes, and (D) practical tradeoffs & tests. Use this as a checklist you can implement step-by-step.
 
-Asymmetric codec design: Shift computational complexity to the encoder (PC GPU) while deploying a lightweight, quantized decoder on VST devices to reduce latency and hardware demands.
 
-Perceptual & stereo-aware coding: Integrate saliency/foveation and cross-view redundancy to minimize decoding workload while preserving visual quality in gaming and VR applications.
+---
 
+A. Architecture-level changes (what to add)
+
+1. Game-engine side-info input
+
+Add an optional input channel to the encoder: {MV, Depth, ObjectID, Normal}, passed as additional feature maps. Use these to condition encoder and entropy model.
+
+Effect: cheaper prediction at encoder; decoder receives compact side-info (quantized/coarse).
+
+
+
+2. Stereo joint-latent design (left + right)
+
+Replace single y_t with a joint latent:
+
+y_ref_t (reference, e.g., left eye) + y_res_t (residual for right eye).
+
+
+Encoder: compute y_ref from left view; compute disparity map d_t and encode y_res as small residual conditioned on y_ref and d_t.
+
+Decoder: decode y_ref → render left; warp y_ref using decoded d_t and add decoded y_res → right view.
+
+
+
+3. Saliency / foveation module
+
+Add a saliency predictor (or accept gaze input). Produce a per-frame saliency map S_t.
+
+Produce a tile/QP map T_t derived from S_t (higher quality for fovea tiles).
+
+Use T_t to (a) select module-bank entry / qp offsets, (b) scale vector banks q_e,q_d,q_f,q_r spatially (per-tile), (c) produce progressive bitstream layers (base + foveal enhancement).
+
+
+
+4. Side-info & bitstream changes
+
+Add headers for stereo_flag, disparity_stream, saliency_layer_map, and engine_side_info in the bitstream.
+
+Make bitstream tile-aware: independent blocks per tile for selective decoding.
+
+
+
+5. Decoder changes for lightweight clients
+
+Decoder must support: warping module for stereo (fast bilinear), selective tile decode (ROI), and progressive layering (apply enhancement layers only for fovea tiles). Keep main synthesis net small; expensive ops done on encoder or in side-info.
+
+
+
+6. Rate-control & module-bank integration
+
+Extend module bank to include stereo & saliency-aware modules: module index = f(QP, tile_priority, stereo_mode).
+
+Vector banks become spatially variable (per-tile vectors) to adapt amplitudes per tile/eye.
+
+
+
+
+
+---
+
+B. Concrete implementation hooks (where to change in DCVC-RT repo)
+
+(Names assume src/ layout typical of DCVC-RT: encoder, decoder, entropy, feature_extractor, rate_control.)
+
+1. Encoder
+
+File(s): src/model/encoder*.py
+
+Add optional input channels; concat engine buffers; incorporate q_e tile-wise scaling before last conv block.
+
+
+
+2. Feature extractor / Context
+
+File(s): src/model/feature_extractor*.py
+
+Accept y_ref for joint stereo context; produce F_t per eye or shared.
+
+
+
+3. Entropy model & hyperprior
+
+File(s): src/model/entropy_model*.py and src/cpp/entropy
+
+Modify to accept engine_side_info and F_t as extra conditioning; add per-tile module selection logic to pick hyperprior from module bank.
+
+
+
+4. Rate-control / Module bank
+
+File(s): src/model/rate_control_module_bank*.py (or src/utils/rate_control.py)
+
+Make module selection function select_module(qp, tile_priority, stereo_flag); implement spatial vector banks (tile vectors).
+
+
+
+5. Quantize / bitstream writer
+
+File(s): src/cpp/ and src/io/bitstream_writer.py
+
+Add tile headers, stereo flags, and small side-info streams (disparity quantized representation). Ensure entropy coder can pack tile-aligned streams.
+
+
+
+6. Decoder / Warping & ROI decoding
+
+File(s): src/model/decoder*.py
+
+Add warp_from_disparity() cheap bilinear warp; support tile_mask input to decode only requested tiles. Export the small decoder (ONNX) for client.
+
+
+
+7. Saliency predictor (train-time & optional runtime)
+
+File(s): src/model/saliency.py (small CNN) or accept external gaze input pipeline. Produce S_t, T_t.
+
+
+
+8. Training / data pipeline
+
+File(s): src/data/dataset_utils.py
+
+Add synthetic stereo pairs (or load stereo datasets); add game-rendered sequences with engine buffers; generate saliency maps (or use gaze data).
+
+
+
+
+
+---
+
+C. Training & loss changes
+
+1. Multi-target reconstruction losses
+
+Loss = λ_y * distortion(y) + λ_s * saliency-weighted distortion + λ_reg * rate.
+
+Use saliency-weighted pixel loss: higher weight inside fovea: L_sal = sum(S_t * d(pixel, recon)).
+
+
+
+2. Stereo losses
+
+Left loss: L_left = d(x_left, x̂_left).
+
+Right loss: L_right = d(x_right, x̂_right) + α * consistency_loss(warp(x_left, d), x_right) (enforce disparity consistency).
+
+
+
+3. Distillation for small decoder
+
+Distill full decoder into small decoder conditioned on same latents. Use perceptual loss (LPIPS/VMAF) on attended regions.
+
+
+
+4. Entropy/hyperprior losses
+
+Train module-bank entries per QP: add a small cross-entropy/regression loss that encourages correct z-distribution prediction for each module. Optionally use a gating loss to encourage module selection generalization.
+
+
+
+5. Curriculum & augmentation
+
+Mix real game captures, synthetic engine renders (with MV/depth), and natural video. Augment with noise, low-light to improve generalization.
+
+
+
+
+
+---
+
+D. Practical tradeoffs, latency & testing
+
+1. Bandwidth vs Decoder cost
+
+Sending disparity & side-info increases bits but reduces decoder compute (cheap warping instead of full decode). Tune side-info budget (e.g., 3–8% bits).
+
+
+
+2. Tile granularity
+
+Smaller tiles → better selective decode but more header overhead. Typical: 64×64 or 128×128 tiles for VR/gaming.
+
+
+
+3. Latency
+
+Encoder-side heavy ops are fine for server/cloud. For local PC→VST, ensure extra side-info encoding time stays within frame budget. Use asynchronous threads for bitstream packing.
+
+
+
+4. Compatibility / bit-exactness
+
+Ensure integerization and deterministic entropy coding for side-info and tile headers.
+
+
+
+5. Evaluation
+
+Metrics: PSNR/SSIM, VMAF, LPIPS. Add saliency-weighted metrics and stereo discomfort metrics (for VR). Measure decode CPU/GPU FLOPs, memory, and end-to-end latency (encode + network + decode + render).
+
+
+
+
+
+---
+
+Quick step-by-step implementation plan
+
+1. Add saliency.py and stereo.py modules (predictor + disparity estimator).
+
+
+2. Modify encoder to accept engine buffers and produce y_ref + d_t + y_res.
+
+
+3. Extend hyperprior/entropy model to condition on d_t and F_t and select module-bank entry per tile.
+
+
+4. Modify bitstream writer to pack tile headers, disparity stream, and per-tile module ids.
+
+
+5. Implement warp-based stereo decode + ROI tile decode in decoder; export small decoder runtime.
+
+
+6. Train with mixed datasets (game + stereo + saliency-weighted loss). Distill small decoder.
+
+
+7. Benchmark latency, bitrate, quality; iterate.
+
+
+
+
+---
+
+If you’d like, I can:
+
+Draft the bitstream tile header format (fields & sizes), or
+
+Create a minimal code patch sketch for the encoder to accept engine buffers + saliency maps, or
+
+Draw a clean diagram that overlays the stereo + saliency + game-side-info on top of the DCVC-RT blocks.
+
+
+Which one should I do next?
 
