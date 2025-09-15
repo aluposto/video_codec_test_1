@@ -1,11 +1,5 @@
- Fallback dependency on C++ extensions
-
-This requires custom CUDA/C++ kernels and bitstream utilities for optimal performance. Without these, the system falls back to slower PyTorch implementations.
-
-Training & dataset generalization
-
-Trained primarily on standard datasets (like Vimeo-90K, UVG, HEVC test sequences). Real-world performance on unseen distributions (mobile captures, low-light, noise) may not match reported numbers.
-
-Computational Complexity 
-
-Still requires a relatively large GPU (A100). Running on consumer GPUs (RTX 30/40 series) is feasible but not benchmarked in detail. 
+PyTorch version: 2.8.0+cu126
+CUDA is available.
+CUDA version (PyTorch): 12.6
+Number of available GPUs: 2
+Name of the current CUDA device: CUDA GPU
