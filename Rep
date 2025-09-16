@@ -1,15 +1,8 @@
-[INFO] Using device: cuda
-[INFO] Loading up to 5 frames from: data/train_videos/clip_01.mp4
-[INFO] Loaded 5 frames. Frame shapes (H,W,3): [(1080, 1920, 3), (1080, 1920, 3), (1080, 1920, 3), (1080, 1920, 3), (1080, 1920, 3)]
-[INFO] Clip tensor shape (B,T,C,H,W): torch.Size([1, 5, 3, 1080, 1920])
-[ERROR] Failed to import DMCI/DMC from src.models. Traceback:
-Traceback (most recent call last):
-  File "/home/work/dcvc/DCVC/train/debug_model_io.py", line 206, in main
-    from src.models.image_model import DMCI
-ModuleNotFoundError: No module named 'src.models'
-Traceback (most recent call last):
-  File "/home/work/dcvc/DCVC/train/debug_model_io.py", line 339, in <module>
-    main()
-  File "/home/work/dcvc/DCVC/train/debug_model_io.py", line 206, in main
-    from src.models.image_model import DMCI
-ModuleNotFoundError: No module named 'src.models'
+pwd; python - <<'PY'
+import os, sys
+print("python exe:", sys.executable)
+print("cwd:", os.getcwd())
+p = os.path.abspath('src')
+print("abs src path:", p, "exists?", os.path.isdir(p))
+print("first 8 sys.path entries:", sys.path[:8])
+PY
