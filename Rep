@@ -1,2 +1,1 @@
-export PYTHONPATH=$PWD/src:$PYTHONPATH
-python train/debug_model_io.py --clip data/train_videos/game_A_level1_clip01.mp4 --device cuda --frames 5
+python -c "import importlib, sys; m=importlib.import_module('cv2'); print('cv2 ok', m.__version__)"
