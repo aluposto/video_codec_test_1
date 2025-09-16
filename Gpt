@@ -1,33 +1,49 @@
-Good — we'll do the clean environment fix (Option 1). Below are exact, copy-pasteable notebook cells and shell commands to run in your Jupyter session (or a terminal). Follow them in order. After the installs you must restart the kernel — I show how. I also include verification and quick troubleshooting steps.
+Got it — you must keep NumPy ≥ 1.20.0. That’s fine: the NumPy ABI problem we saw was caused by a mismatch (an extension module compiled for a different NumPy major/minor). The safe approach is to install a NumPy in the 1.x series (newer than 1.20) and reinstall OpenCV wheels that are built against that NumPy. In practice the stable choice is a recent 1.x release (e.g. 1.25.x) and a matching opencv-python-headless wheel.
 
-> ⚠️ Important: these commands modify packages in the Python environment your notebook kernel is using. Make sure you run them in the same environment (the notebook's sys.executable). If you want, paste the output of !which python before running and I’ll confirm.
+Below are exact, copy-pasteable notebook/terminal commands and steps you can run in your Jupyter environment. They:
+
+1. make sure you’re operating in the same Python env the notebook uses,
 
 
+2. install a compatible NumPy (>=1.20 and <2),
+
+
+3. reinstall OpenCV headless,
+
+
+4. remove conflicting user-site installs, and
+
+
+5. verify the imports — then ask you to restart the kernel.
+
+
+
+If you prefer conda (recommended for stability), I include an optional conda path at the end.
 
 
 ---
 
-0) Confirm the Python executable & current versions (RUN THIS FIRST)
+A — Recommended notebook commands (run in a Jupyter cell)
 
-Run this cell in the notebook to confirm the environment we will modify:
+Run each cell one by one.
 
-# Python cell: confirm environment & versions
-import sys, site, subprocess
+1) Confirm which Python / env the notebook is using
+
+# Python cell
+import sys, os
 print("sys.executable:", sys.executable)
-print("Python version:", sys.version.replace('\\n',' '))
-print("sys.path[0:6]:", sys.path[:6])
-try:
-    import numpy, cv2
-    print("NUMPY:", numpy.__version__, "  OPENCV:", cv2.__version__)
-except Exception as e:
-    print("Existing numpy/opencv import failed or not present:", e)
+print("Python version:", sys.version.replace("\n"," "))
+import site
+print("site.USER_SITE:", site.getusersitepackages())
+
+If sys.executable points to the conda env / python you want to modify, proceed. If not, switch kernel to the intended env.
 
 
 ---
 
-1) Uninstall conflicting / user-level OpenCV packages (shell)
+2) Uninstall any user-level OpenCV and conflicting packages
 
-Run this shell cell (copy/paste into notebook). It removes any opencv-* packages from both environment and user site.
+This removes both env-level and user-site OpenCV installs (safe to run).
 
 # Shell cell
 !pip uninstall -y opencv-python opencv-python-headless opencv-contrib-python || true
@@ -36,36 +52,29 @@ Run this shell cell (copy/paste into notebook). It removes any opencv-* packages
 
 ---
 
-2) Ensure a compatible NumPy version (shell)
+3) Install a compatible NumPy (>=1.20, <2) and reinstall OpenCV headless
 
-Many binary wheels expect NumPy < 2. We'll install a NumPy < 2 to be safe.
-
-# Shell cell: install a compatible numpy (<2) and upgrade pip/wheel
-!pip install --upgrade pip setuptools wheel
-!pip install --upgrade "numpy<2"
-
-If you prefer to keep NumPy 2.x, skip this step — but you may need to rebuild other extensions. Using numpy<2 is the quicker path.
-
-
----
-
-3) Install a stable OpenCV build built for your Python (shell)
-
-Install the headless OpenCV (no GUI deps) into the same environment:
+I'll pick NumPy 1.25.2 (recent 1.x release) — it satisfies >=1.20. If you prefer another 1.x (e.g. 1.24.x), substitute it.
 
 # Shell cell
+!pip install --upgrade pip setuptools wheel
+!pip install --upgrade "numpy>=1.20,<2" "numpy==1.25.2"
+# Install a headless opencv wheel built for the same ABI
 !pip install --no-cache-dir --upgrade opencv-python-headless==4.7.0.72
 
-If you need GUI features (imshow), instead use opencv-python==4.7.0.72. But opencv-python-headless is recommended for server/notebook.
+Notes:
+
+opencv-python-headless==4.7.0.72 is a widely-used wheel and generally compatible with NumPy 1.25.x.
+
+If you need GUI (imshow), replace with opencv-python==4.7.0.72, but headless is recommended for server/notebook.
+
 
 
 ---
 
-4) Verify installs (shell)
+4) Verify installation (run in the same environment)
 
-Run this to show versions and to test import in the same environment:
-
-# Shell cell
+# Shell cell: quick import test
 !python - <<'PY'
 import sys
 print("python:", sys.executable)
@@ -73,88 +82,95 @@ try:
     import numpy, cv2
     print("numpy:", numpy.__version__)
     print("cv2:", cv2.__version__)
-    # quick cv2 check: create an array and convert color (no GUI)
     import numpy as np
-    a = np.zeros((10,10,3), dtype=np.uint8)
+    a = np.zeros((8,8,3), dtype=np.uint8)
     b = cv2.cvtColor(a, cv2.COLOR_BGR2RGB)
     print("cv2 basic op OK, output shape:", b.shape)
 except Exception as e:
-    print("Import error:", repr(e))
+    print("Import or test failed:", repr(e))
 PY
 
-If you see numpy and cv2 versions printed and cv2 basic op OK, you're good.
+If that prints numpy and cv2 versions and cv2 basic op OK, you’re set.
 
 
 ---
 
-5) Restart the Jupyter kernel (important!)
+5) Restart the notebook kernel
 
-After installing binary packages, you must restart the kernel so the new native extensions are loaded.
+After these installs you must restart the kernel so Python loads the new native extensions.
 
-In Jupyter: Menu → Kernel → Restart Kernel.
+In Jupyter UI: Kernel → Restart Kernel.
 
-Or run this cell (will not always fully restart in all frontends; use the UI restart if unsure):
+Or run the UI-recommended restart.
 
 
-# Python cell (attempt graceful restart)
-import os, sys
-print("Now please restart the kernel from the UI (Kernel -> Restart).")
-
-After restart, re-run the Cell 0 or the verification cell to confirm versions.
+After restart, re-run the small verification cell (step 1) and then run the debug script (either via !python train/debug_model_io.py ... or import & call main() as we used earlier).
 
 
 ---
 
-6) Re-run the debug script (recommended in-notebook)
+B — If you get dependency conflicts / pip refuses due to pinned packages
 
-After the kernel restart and re-running the initial confirm cell, run the debug script (imageio version or cv2 version — now cv2 should work). Use either:
+If pip complains about other packages requiring a different NumPy, prefer creating a clean conda environment (this avoids breaking other projects). Example conda workflow (run in a terminal, not inside Jupyter unless you create a new kernel):
+
+conda create -n dcvc_env python=3.10 -y
+conda activate dcvc_env
+conda install -c conda-forge python=3.10 numpy=1.25 opencv ffmpeg -y
+pip install -r requirements.txt  # install repo deps into this env
+# then launch jupyterlab/notebook in this env or register kernel and select it in UI
+python -m ipykernel install --user --name dcvc_env --display-name "dcvc_env"
+
+Then in Jupyter, switch the kernel to dcvc_env.
+
+
+---
+
+C — If OpenCV still complains about ABI after the install
+
+1. Ensure there are no stray OpenCV wheels in ~/.local/lib/python.../site-packages. Remove them if present; the earlier uninstall attempted that but manually check:
+
+
+
+# Shell cell - check user site-packages for opencv
+!python - <<'PY'
+import site, os, glob
+us = site.getusersitepackages()
+print("USER_SITE:", us)
+for p in (us,):
+    if os.path.isdir(p):
+        print("Found files in user site:", glob.glob(os.path.join(p, "cv2*"))[:10])
+PY
+
+Remove any leftovers and reinstall.
+
+2. If the error mentions a compiled extension built with NumPy 1.x vs 2.x mismatch, ensure all binary extensions (not just OpenCV) are compatible. In practice using numpy<2 with 1.25.x resolves the common issue.
+
+
+
+
+---
+
+D — After success: run the debug script and paste outputs
+
+Once cv2 imports fine in the verification step, re-run the debug script:
 
 # Shell cell
 !python train/debug_model_io.py --clip data/train_videos/game_A_level1_clip01.mp4 --device cuda --frames 5
 
-or import & run in-process (Python cell):
-
-# Python cell (in-process run)
-import importlib, sys, traceback
-sys.argv = ['train/debug_model_io.py', '--clip', 'data/train_videos/game_A_level1_clip01.mp4', '--device', 'cuda', '--frames', '5']
-try:
-    mod = importlib.import_module('train.debug_model_io')
-    importlib.reload(mod)
-    mod.main()
-except Exception:
-    traceback.print_exc()
+Then paste the printed === Image model output === and === Video model output === sections here. I will modify train/train_video.py to match the exact keys (recon and likelihood names) your models actually return.
 
 
 ---
 
-Troubleshooting
+Final notes / safety
 
-If cv2 import still fails with NumPy ABI errors:
+You asked to keep numpy >= 1.20.0 — all steps above satisfy that (we install 1.25.2). If you must keep a very specific version (e.g., numpy==1.22.0), substitute that in the pip install command — OpenCV wheel should still be compatible with most NumPy 1.x versions.
 
-Confirm there are no conflicting OpenCV installs in ~/.local or other locations:
+If you hit package conflicts you don’t want to resolve in-place, use the conda route and register that environment as a Jupyter kernel — that isolates changes.
 
-!python -c "import site, sys; print('user site:', site.getusersitepackages()); import pkgutil; print(pkgutil.iter_modules().__class__)"
-
-Try pip uninstall again and ensure you reinstall in the same environment the kernel uses (check sys.executable from Cell 0).
-
-As last resort, create a fresh conda env and start a new kernel tied to it.
-
-
-If you downgraded NumPy but another package requires NumPy>=2, you might have dependency conflicts. In that case, consider a clean conda env:
-
-
-# Terminal (not notebook) recommended
-conda create -n dcvc_env python=3.10 -y
-conda activate dcvc_env
-conda install -c conda-forge python=3.10 numpy=1.25 opencv ffmpeg -y
-pip install -r requirements.txt  # install other Python deps
-
-Then configure your notebook to use that kernel.
 
 
 ---
 
-Final note
-
-Run the steps above and paste the outputs of the verification cell (Step 4) here if anything fails. If everything works, run the debug script and paste the === Image model output === and === Video model output === sections — I’ll then patch train/train_video.py to match the exact keys and likelihood formats your models return.
+Tell me when you’ve run the steps and restarted the kernel. If anything errors, paste the failing cell’s full output and I’ll give the exact next command. Once cv2 imports cleanly, run the debug script and paste the Image/Video output sections so I can patch the training script.
 
