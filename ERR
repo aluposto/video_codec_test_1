@@ -1,15 +1,42 @@
-[INFO] Using device: cuda
-[INFO] Loading up to 5 frames from: data/train_videos/clip_01.mp4
-[INFO] Loaded 5 frames. Frame shapes (H,W,3): [(1080, 1920, 3), (1080, 1920, 3), (1080, 1920, 3), (1080, 1920, 3), (1080, 1920, 3)]
-[INFO] Clip tensor shape (B,T,C,H,W): torch.Size([1, 5, 3, 1080, 1920])
-[ERROR] Failed to import DMCI/DMC from src.models. Traceback:
-Traceback (most recent call last):
-  File "/home/work/dcvc/DCVC/train/debug_model_io.py", line 206, in main
-    from src.models.image_model import DMCI
-ModuleNotFoundError: No module named 'src.models'
-Traceback (most recent call last):
-  File "/home/work/dcvc/DCVC/train/debug_model_io.py", line 339, in <module>
-    main()
-  File "/home/work/dcvc/DCVC/train/debug_model_io.py", line 206, in main
-    from src.models.image_model import DMCI
-ModuleNotFoundError: No module named 'src.models'
+/home/work/dcvc/DCVC
+total 73
+drwxr-xr-x 2 work work  4096 Sep 16 18:30  .
+drwxr-xr-x 2 work work  4096 Sep 16  2025  ..
+-rw-r--r-- 1 work work    85 Sep  8 19:08  .flake8
+drwxr-xr-x 2 work work  4096 Sep  8 19:08  .git
+drwxr-xr-x 2 work work  4096 Sep  8 19:08  .github
+-rw-r--r-- 1 work work    61 Sep  8 19:08  .gitignore
+drwxr-xr-x 2 work work  4096 Sep 16 15:51  .ipynb_checkpoints
+-rw-r--r-- 1 work work   444 Sep  8 19:08  CODE_OF_CONDUCT.md
+-rw-r--r-- 1 work work   921 Sep  8 19:08  CONTRIBUTING.md
+drwxr-xr-x 2 work work  4096 Sep  8 19:08  DCVC-family
+-rw-r--r-- 1 work work  1074 Sep  8 19:08  LICENSE.txt
+-rw-r--r-- 1 work work 14429 Sep  8 19:08 'NOTICE .txt'
+-rw-r--r-- 1 work work 15786 Sep  8 19:08  README.md
+-rw-r--r-- 1 work work  2781 Sep  8 19:08  SECURITY.md
+drwxr-xr-x 2 work work  4096 Sep  9 15:17 'Untitled Folder'
+drwxr-xr-x 2 work work  4096 Sep  8 19:08  assets
+-rw-r--r-- 1 work work   609 Sep  8 19:08  azure-pipelines.yml
+drwxr-xr-x 2 work work  4096 Sep  9 21:46  checkpoints
+drwxr-xr-x 2 work work  4096 Sep 16 18:29  data
+-rw-r--r-- 1 work work  7333 Sep  8 19:08  dataset_config_example_yuv420.json
+drwxr-xr-x 2 work work  4096 Sep  9 18:44  media
+-rw-r--r-- 1 work work    62 Sep  8 19:08  requirements.txt
+drwxr-xr-x 2 work work  4096 Sep  8 19:08  src
+-rw-r--r-- 1 work work  6097 Sep  8 19:08  test_conditions.md
+-rw-r--r-- 1 work work 20972 Sep  8 19:08  test_video.py
+drwxr-xr-x 2 work work  4096 Sep 16 18:30  tools
+drwxr-xr-x 2 work work  4096 Sep 16 20:03  train
+python:
+Python 3.10.12
+/bin/bash: line 1: warning: here-document at line 1 delimited by end-of-file (wanted `PY')
+abs src path: /home/work/dcvc/DCVC/src exists? True
+first sys.path entries: ['', '/home/work/.local/lib/python3.10/site-packages', '/home/work/dcvc', '/home/work/dcvc/miniconda3/envs/dcvc_env/lib/python312.zip', '/home/work/dcvc/miniconda3/envs/dcvc_env/lib/python3.12', '/home/work/dcvc/miniconda3/envs/dcvc_env/lib/python3.12/lib-dynload']
+---------------------------------------------------------------------------
+NameError                                 Traceback (most recent call last)
+Cell In[31], line 10
+      8 print("abs src path:", p, "exists?", os.path.isdir(p))
+      9 print("first sys.path entries:", sys.path[:6])
+---> 10 PY
+
+NameError: name 'PY' is not defined
