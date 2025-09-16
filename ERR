@@ -1,4 +1,16 @@
-Traceback (most recent call last):
-  File "/home/work/dcvc/DCVC/train/debug_model_io.py", line 13, in <module>
-    from src.models.image_model import DMCI
-ModuleNotFoundError: No module named 'src.models'
+total 0
+drwxr-xr-x 2 work work 4096 Sep  8 19:08 .
+drwxr-xr-x 2 work work 4096 Sep 16 18:30 ..
+drwxr-xr-x 2 work work 4096 Sep  9 21:13 cpp
+drwxr-xr-x 2 work work 4096 Sep  9 21:31 layers
+drwxr-xr-x 2 work work 4096 Sep  9 21:56 models
+drwxr-xr-x 2 work work 4096 Sep  9 21:31 utils
+total 48
+drwxr-xr-x 2 work work  4096 Sep  9 21:56 .
+drwxr-xr-x 2 work work  4096 Sep  8 19:08 ..
+drwxr-xr-x 2 work work  4096 Sep  9 21:56 .ipynb_checkpoints
+drwxr-xr-x 2 work work  4096 Sep  9 21:31 __pycache__
+-rw-r--r-- 1 work work 13211 Sep  8 19:08 common_model.py
+-rw-r--r-- 1 work work 13366 Sep  8 19:08 entropy_models.py
+-rw-r--r-- 1 work work  7864 Sep  8 19:08 image_model.py
+-rw-r--r-- 1 work work 13075 Sep  8 19:08 video_model.py
