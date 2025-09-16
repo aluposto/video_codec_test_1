@@ -1,0 +1,587 @@
+Nice — below is a clear, step-by-step SOP plus full code you can copy/paste. I show exactly which file to create and where to put each file, and include short run commands and troubleshooting tips. Follow the steps in order.
+
+1 — Repository layout (what to create)
+
+Place these new files under your dcvc-rt repo root:
+
+dcvc-rt/
+├─ src/                           # (existing repo code)
+├─ data/                          # your data (see structure below)
+├─ train/
+│  ├─ train_video.py              # <- main training script (paste below)
+│  └─ debug_model_io.py           # <- small script to inspect model outputs
+├─ tools/
+│  └─ extract_frames.sh           # <- ffmpeg helper (optional)
+├─ requirements.txt               # <- pip (see below)
+└─ README_TRAINING.md             # <- quick instructions + commands
+
+Create the train/ and tools/ directories and add the files below.
+
+
+---
+
+2 — Data: recommended structure
+
+Preferred (pre-extracted frames):
+
+data/
+  train/
+    clip_0001/ frame00001.png frame00002.png ...
+    clip_0002/ ...
+  val/
+    clip_1001/ frame00001.png ...
+
+If you prefer mp4s, put them in data/train_videos/ and data/val_videos/ (scripts below support both).
+
+
+---
+
+3 — requirements.txt
+
+Create requirements.txt in repo root (install torch separately to match your CUDA):
+
+tqdm
+opencv-python
+torchvision
+numpy
+matplotlib
+torchmetrics
+
+Note: Install torch / cuda using the appropriate command for your machine (use the official PyTorch site) — e.g. pip install torch torchvision matching your CUDA version.
+
+
+---
+
+4 — tools/extract_frames.sh (ffmpeg helper)
+
+Create tools/extract_frames.sh:
+
+#!/usr/bin/env bash
+# Usage: ./extract_frames.sh input.mp4 /output/dir
+mkdir -p "$2"
+ffmpeg -i "$1" -vf scale=-2:720 -q:v 2 "$2/frame_%05d.png"
+echo "Frames saved to $2"
+
+Make it executable: chmod +x tools/extract_frames.sh
+
+
+---
+
+5 — train/debug_model_io.py — inspect model outputs (run BEFORE training)
+
+Put this file in train/debug_model_io.py. It helps confirm what keys your models output (very important).
+
+#!/usr/bin/env python3
+"""
+Debug script: load one small clip and run through DMCI and DMC to print output keys/shapes.
+Usage:
+  PYTHONPATH=$PWD/src python train/debug_model_io.py --clip data/sample/clip_0001 --device cuda
+"""
+import argparse
+import os
+import cv2
+import torch
+from torchvision.transforms import ToTensor
+from glob import glob
+from src.models.image_model import DMCI
+from src.models.video_model import DMC
+
+def load_clip_frames(dir_or_mp4, frames=5):
+    # if it's a directory with images:
+    if os.path.isdir(dir_or_mp4):
+        imgs = sorted(glob(os.path.join(dir_or_mp4, '*')))
+        imgs = imgs[:frames]
+        arrs = [cv2.cvtColor(cv2.imread(p), cv2.COLOR_BGR2RGB) for p in imgs]
+        return arrs
+    # else try to read video:
+    cap = cv2.VideoCapture(dir_or_mp4)
+    arrs = []
+    while len(arrs) < frames:
+        ok, img = cap.read()
+        if not ok:
+            break
+        arrs.append(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
+    cap.release()
+    return arrs
+
+def main():
+    p = argparse.ArgumentParser()
+    p.add_argument('--clip', required=True)
+    p.add_argument('--device', default='cuda')
+    p.add_argument('--frames', type=int, default=5)
+    args = p.parse_args()
+
+    device = torch.device(args.device if torch.cuda.is_available() else 'cpu')
+
+    imgs = load_clip_frames(args.clip, frames=args.frames)
+    if len(imgs) < args.frames:
+        raise RuntimeError("Not enough frames found in clip")
+
+    to_tensor = ToTensor()
+    clip_t = torch.stack([to_tensor(im) for im in imgs], dim=0)  # T,C,H,W
+    clip_t = clip_t.unsqueeze(0).to(device)  # 1,T,C,H,W for batch dimension
+
+    model_i = DMCI().to(device).eval()
+    model_p = DMC().to(device).eval()
+
+    with torch.no_grad():
+        # I-frame
+        i_frame = clip_t[0,0]  # C,H,W
+        print("I-frame shape:", i_frame.shape)
+        out_i = model_i(i_frame.unsqueeze(0))  # B=1
+        print("Image model output keys:", list(out_i.keys()))
+        for k,v in out_i.items():
+            if torch.is_tensor(v):
+                print(f"  {k}: tensor shape {v.shape}, dtype {v.dtype}, min/max {v.min().item():.3g}/{v.max().item():.3g}")
+            else:
+                print(f"  {k}: type {type(v)}")
+
+        # P-frame (one step)
+        prev = out_i.get('x_hat', out_i.get('recon', None))
+        if prev is None:
+            print("WARNING: image model did not return 'x_hat' or 'recon'. Adapt code to your model.")
+        cur = clip_t[0,1]
+        out_p = model_p(cur.unsqueeze(0), ref=prev)
+        print("Video model output keys:", list(out_p.keys()))
+        for k,v in out_p.items():
+            if torch.is_tensor(v):
+                print(f"  {k}: tensor shape {v.shape}, dtype {v.dtype}, min/max {v.min().item():.3g}/{v.max().item():.3g}")
+            else:
+                print(f"  {k}: type {type(v)}")
+
+if __name__ == '__main__':
+    main()
+
+Run it (example):
+
+export PYTHONPATH=$PWD/src:$PYTHONPATH
+python train/debug_model_io.py --clip data/sample/clip_0001 --device cuda
+
+If the printed output keys differ from 'x_hat' / 'likelihoods', note the key names and use them in train/train_video.py (instructions below).
+
+
+---
+
+6 — train/train_video.py — main training script
+
+Create train/train_video.py. This is a single-file training script (copy exactly):
+
+#!/usr/bin/env python3
+"""
+train/train_video.py
+Single-file training loop for DMCI (I-frame) + DMC (P-frames).
+Usage example:
+  export PYTHONPATH=$PWD/src:$PYTHONPATH
+  python train/train_video.py \
+    --train_root data/train \
+    --val_root data/val \
+    --save_dir runs/gaming_exp1 \
+    --batch_size 4 \
+    --frames 5 \
+    --crop 256 \
+    --epochs 50 \
+    --mixed_precision
+"""
+import argparse
+import os
+import random
+import math
+from glob import glob
+from pathlib import Path
+import cv2
+import numpy as np
+import torch
+import torch.nn.functional as F
+from torch.utils.data import Dataset, DataLoader
+from torchvision.transforms import ToTensor
+from tqdm import tqdm
+from torch import nn
+from torch.cuda import amp
+
+from src.models.image_model import DMCI
+from src.models.video_model import DMC
+
+# ---------------- Dataset ----------------
+class ClipDataset(Dataset):
+    def __init__(self, root, frames=5, crop=256, mode='train'):
+        self.root = Path(root)
+        self.frames = frames
+        self.crop = crop
+        self.mode = mode
+
+        mp4s = sorted(self.root.glob('**/*.mp4'))
+        if mp4s:
+            self.sources = [str(p) for p in mp4s]
+            self.kind = 'video'
+        else:
+            dirs = [d for d in self.root.iterdir() if d.is_dir()]
+            if not dirs:
+                raise RuntimeError(f"No video files or frame dirs in {root}")
+            self.sources = [str(d) for d in dirs]
+            self.kind = 'frames'
+        self.to_tensor = ToTensor()
+
+    def read_frames_from_video(self, path):
+        cap = cv2.VideoCapture(path)
+        frames = []
+        ok, img = cap.read()
+        while ok:
+            frames.append(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
+            ok, img = cap.read()
+        cap.release()
+        return frames
+
+    def read_frames_from_dir(self, d):
+        imgs = sorted(glob(str(Path(d) / '*')))
+        return [cv2.cvtColor(cv2.imread(p), cv2.COLOR_BGR2RGB) for p in imgs]
+
+    def __len__(self):
+        return max(len(self.sources) * 100, len(self.sources))
+
+    def __getitem__(self, idx):
+        src = random.choice(self.sources)
+        if self.kind == 'video':
+            frames = self.read_frames_from_video(src)
+        else:
+            frames = self.read_frames_from_dir(src)
+
+        if len(frames) < self.frames:
+            frames = frames + [frames[-1]] * (self.frames - len(frames))
+
+        start = random.randint(0, max(0, len(frames) - self.frames))
+        clip = frames[start:start + self.frames]
+        clip_t = [self.to_tensor(im) for im in clip]  # list of C,H,W
+        clip_t = torch.stack(clip_t, dim=0)  # T,C,H,W
+
+        # resize if smaller than crop
+        _, C, H, W = clip_t.shape
+        if H < self.crop or W < self.crop:
+            scale = max(self.crop / H, self.crop / W)
+            new_h, new_w = math.ceil(H * scale), math.ceil(W * scale)
+            clip_t = F.interpolate(clip_t, size=(new_h, new_w), mode='bilinear', align_corners=False)
+            _, C, H, W = clip_t.shape
+
+        top = random.randint(0, H - self.crop)
+        left = random.randint(0, W - self.crop)
+        clip_t = clip_t[:, :, top:top + self.crop, left:left + self.crop]
+
+        if self.mode == 'train' and random.random() < 0.5:
+            clip_t = torch.flip(clip_t, dims=[3])  # horizontal flip
+
+        return clip_t  # T,C,H,W
+
+# ---------------- Helpers ----------------
+def bits_per_pixel_from_likelihoods(lik_dict, pixels):
+    total_bits = 0.0
+    for v in lik_dict.values():
+        if not torch.is_tensor(v):
+            continue
+        total_bits += (-torch.log2(torch.clamp(v, min=1e-12))).sum()
+    bpp = total_bits / float(pixels)
+    return bpp
+
+def psnr_batch(x, x_hat, data_range=1.0):
+    mse = F.mse_loss(x_hat, x, reduction='none')
+    mse = mse.view(mse.size(0), -1).mean(dim=1)
+    psnr = 10.0 * torch.log10((data_range ** 2) / mse)
+    return psnr.mean().item()
+
+def collate_fn(batch):
+    # batch: list of T,C,H,W -> stack to B,T,C,H,W
+    return torch.stack(batch, dim=0)
+
+# ---------------- Training & Validation ----------------
+def validate(image_model, video_model, val_loader, device, args):
+    image_model.eval(); video_model.eval()
+    tot_psnr = 0.0; tot_bpp = 0.0; n = 0
+    with torch.no_grad():
+        for batch in tqdm(val_loader, desc='val', leave=False):
+            batch = batch.to(device)  # B,T,C,H,W
+            B, T, C, H, W = batch.shape
+            i_frames = batch[:,0]  # B,C,H,W
+            p_frames = [batch[:, t] for t in range(1, T)]
+
+            out_i = image_model(i_frames)
+            xhat_i = out_i.get('x_hat', out_i.get('recon', None))
+            lik_i = out_i.get('likelihoods', out_i.get('probs', {}))
+            if xhat_i is None:
+                raise RuntimeError("Image model did not return expected key 'x_hat' or 'recon'.")
+
+            total_lik = {}
+            if isinstance(lik_i, dict):
+                for k,v in lik_i.items(): total_lik[f'i_{k}'] = v
+            else:
+                total_lik['i'] = lik_i
+
+            prev = xhat_i
+            recons = [xhat_i]
+            for t, cur in enumerate(p_frames):
+                out_p = video_model(cur, ref=prev)
+                xhat_p = out_p.get('x_hat', out_p.get('recon', None))
+                lik_p = out_p.get('likelihoods', out_p.get('probs', {}))
+                if xhat_p is None:
+                    raise RuntimeError("Video model did not return expected key 'x_hat' or 'recon'.")
+                recons.append(xhat_p)
+                prev = xhat_p
+                if isinstance(lik_p, dict):
+                    for k,v in lik_p.items(): total_lik[f'p_{t}_{k}'] = v
+                else:
+                    total_lik[f'p_{t}'] = lik_p
+
+            recon_stack = torch.stack(recons, dim=0).permute(1,0,2,3,4).reshape(-1, C, H, W)
+            target_stack = batch.permute(0,1,2,3,4).reshape(-1, C, H, W)
+            psnr_val = psnr_batch(target_stack, recon_stack)
+            pixels = recon_stack.size(0) * H * W
+            bpp = bits_per_pixel_from_likelihoods(total_lik, pixels)
+            tot_psnr += psnr_val; tot_bpp += bpp; n += 1
+    return tot_psnr / n, (tot_bpp / n).item()
+
+def rd_loss(recon_flat, target_flat, total_lik, lambda_rd):
+    distortion = F.mse_loss(recon_flat, target_flat)
+    Bn, C, H, W = target_flat.shape
+    pixels = Bn * H * W
+    rate_bpp = bits_per_pixel_from_likelihoods(total_lik, pixels)
+    total = lambda_rd * distortion + rate_bpp
+    return total, distortion.detach(), rate_bpp.detach()
+
+def parse_args():
+    p = argparse.ArgumentParser()
+    p.add_argument('--train_root', required=True)
+    p.add_argument('--val_root', required=True)
+    p.add_argument('--save_dir', default='./checkpoints')
+    p.add_argument('--batch_size', type=int, default=4)
+    p.add_argument('--frames', type=int, default=5)
+    p.add_argument('--crop', type=int, default=256)
+    p.add_argument('--lr', type=float, default=1e-4)
+    p.add_argument('--epochs', type=int, default=50)
+    p.add_argument('--lambda_rd', type=float, default=0.01)
+    p.add_argument('--num_workers', type=int, default=4)
+    p.add_argument('--mixed_precision', action='store_true')
+    p.add_argument('--device', default='cuda')
+    p.add_argument('--resume', default=None)
+    return p.parse_args()
+
+def main():
+    args = parse_args()
+    os.makedirs(args.save_dir, exist_ok=True)
+    device = torch.device(args.device if torch.cuda.is_available() else 'cpu')
+
+    # reproducibility seeds
+    random.seed(42); np.random.seed(42); torch.manual_seed(42)
+
+    # models
+    image_model = DMCI().to(device)
+    video_model = DMC().to(device)
+
+    train_ds = ClipDataset(args.train_root, frames=args.frames, crop=args.crop, mode='train')
+    val_ds = ClipDataset(args.val_root, frames=args.frames, crop=args.crop, mode='val')
+
+    train_loader = DataLoader(train_ds, batch_size=args.batch_size, shuffle=True,
+                              num_workers=args.num_workers, collate_fn=collate_fn, pin_memory=True)
+    val_loader = DataLoader(val_ds, batch_size=max(1, args.batch_size//2), shuffle=False,
+                            num_workers=args.num_workers, collate_fn=collate_fn, pin_memory=True)
+
+    optimizer = torch.optim.Adam(list(image_model.parameters()) + list(video_model.parameters()), lr=args.lr)
+    scaler = amp.GradScaler(enabled=args.mixed_precision)
+
+    start_epoch = 0
+    if args.resume:
+        ck = torch.load(args.resume, map_location=device)
+        image_model.load_state_dict(ck['image'])
+        video_model.load_state_dict(ck['video'])
+        optimizer.load_state_dict(ck.get('optim', optimizer.state_dict()))
+        start_epoch = ck.get('epoch', 0) + 1
+        print("Resumed from", args.resume)
+
+    for epoch in range(start_epoch, args.epochs):
+        image_model.train(); video_model.train()
+        pbar = tqdm(train_loader, desc=f'Epoch {epoch+1}/{args.epochs}', leave=False)
+        epoch_loss = 0.0
+        for batch in pbar:
+            batch = batch.to(device)  # B,T,C,H,W
+            B, T, C, H, W = batch.shape
+            i_frame = batch[:,0]  # B,C,H,W
+            p_frames = [batch[:, t] for t in range(1, T)]
+
+            optimizer.zero_grad()
+            with amp.autocast(enabled=args.mixed_precision):
+                out_i = image_model(i_frame)
+                xhat_i = out_i.get('x_hat', out_i.get('recon', None))
+                lik_i = out_i.get('likelihoods', out_i.get('probs', {}))
+                if xhat_i is None:
+                    raise RuntimeError("Image model missing 'x_hat' or 'recon' key.")
+
+                total_lik = {}
+                if isinstance(lik_i, dict):
+                    for k,v in lik_i.items(): total_lik[f'i_{k}'] = v
+                else:
+                    total_lik['i'] = lik_i
+
+                prev = xhat_i
+                recons = [xhat_i]
+                for t, cur in enumerate(p_frames):
+                    out_p = video_model(cur, ref=prev)
+                    xhat_p = out_p.get('x_hat', out_p.get('recon', None))
+                    lik_p = out_p.get('likelihoods', out_p.get('probs', {}))
+                    if xhat_p is None:
+                        raise RuntimeError("Video model missing 'x_hat' or 'recon' key.")
+                    recons.append(xhat_p)
+                    prev = xhat_p
+                    if isinstance(lik_p, dict):
+                        for k,v in lik_p.items(): total_lik[f'p_{t}_{k}'] = v
+                    else:
+                        total_lik[f'p_{t}'] = lik_p
+
+                recon_stack = torch.stack(recons, dim=0).permute(1,0,2,3,4).reshape(-1, C, H, W)
+                target_stack = batch.permute(0,1,2,3,4).reshape(-1, C, H, W)
+
+                loss, dist, bpp = rd_loss(recon_stack, target_stack, total_lik, args.lambda_rd)
+
+            scaler.scale(loss).backward()
+            scaler.unscale_(optimizer)
+            torch.nn.utils.clip_grad_norm_(list(image_model.parameters()) + list(video_model.parameters()), 5.0)
+            scaler.step(optimizer); scaler.update()
+
+            epoch_loss += loss.item()
+            pbar.set_postfix({'loss': epoch_loss / (pbar.n + 1), 'dist': float(dist), 'bpp': float(bpp)})
+
+        # save checkpoint
+        torch.save({'epoch': epoch, 'image': image_model.state_dict(),
+                    'video': video_model.state_dict(), 'optim': optimizer.state_dict()},
+                   os.path.join(args.save_dir, f'ckpt_epoch_{epoch:04d}.pth'))
+        print(f"Saved ckpt_epoch_{epoch:04d}")
+
+        # validate
+        val_psnr, val_bpp = validate(image_model, video_model, val_loader, device, args)
+        print(f"[Epoch {epoch}] VAL PSNR: {val_psnr:.3f} dB    VAL bpp: {val_bpp:.6f}")
+
+if __name__ == '__main__':
+    main()
+
+Important notes in train_video.py:
+
+The script expects DMCI and DMC importable at src.models.image_model and src.models.video_model.
+
+The code looks for x_hat or recon, and likelihoods or probs keys in model outputs. If your model uses different names, update the .get(...) calls (see next section).
+
+Start small (one or two clips) to verify shapes before running large training.
+
+
+
+---
+
+7 — Where to put each file (summary)
+
+train/train_video.py ← main training script
+
+train/debug_model_io.py ← run first to inspect model outputs & keys
+
+tools/extract_frames.sh ← ffmpeg helper
+
+requirements.txt ← pip packages
+
+README_TRAINING.md ← (create from the README section below or use the instructions here)
+
+
+
+---
+
+8 — Step-by-step SOP (commands & order)
+
+1. Install dependencies
+
+Create venv / conda env.
+
+Install non-torch deps: pip install -r requirements.txt
+
+Install torch & torchvision matching your CUDA from https://pytorch.org
+
+
+
+2. Prepare data
+
+Option A (recommended): pre-extract frames:
+
+./tools/extract_frames.sh input_gameplay.mp4 data/train/clip_0001
+
+Create many clip_xxx directories under data/train and data/val.
+
+Option B: put mp4s directly under data/train / data/val.
+
+
+
+3. Run debug to inspect model outputs
+
+export PYTHONPATH=$PWD/src:$PYTHONPATH
+python train/debug_model_io.py --clip data/sample/clip_0001 --device cuda
+
+Confirm that image/video models return x_hat and likelihoods (or note their actual key names).
+
+
+
+4. (If necessary) edit train/train_video.py to match output keys
+
+If debug printed recon instead of x_hat, change .get('x_hat', ...) to .get('recon', ...) in the script.
+
+If likelihood tensors are named probs_l or likelihood_map, update collection code accordingly.
+
+
+
+5. Run a short smoke test (1 epoch, small batch)
+
+python train/train_video.py \
+  --train_root data/train_sample \
+  --val_root data/val_sample \
+  --save_dir runs/test \
+  --batch_size 2 \
+  --frames 3 \
+  --crop 128 \
+  --epochs 1 \
+  --mixed_precision
+
+Check for exceptions, NaNs, or OOM. If OOM, reduce batch/crop/frames or enable mixed_precision.
+
+
+
+6. Start real training
+
+python train/train_video.py \
+  --train_root data/train \
+  --val_root data/val \
+  --save_dir runs/gaming_exp1 \
+  --batch_size 4 \
+  --frames 5 \
+  --crop 256 \
+  --epochs 50 \
+  --mixed_precision
+
+
+7. Monitor
+
+Check checkpoint directory for saved ckpt_epoch_*.pth.
+
+Inspect printed VAL PSNR and VAL bpp after each epoch; save reconstructions manually if desired for visual inspection (add code to save images if you want).
+
+
+
+8. Resume
+
+python train/train_video.py ... --resume runs/gaming_exp1/ckpt_epoch_0010.pth
+
+
+
+
+---
+
+9 — What to change if your model outputs are different
+
+Run debug_model_io.py. If outputs show different keys:
+
+In train/train_video.py replace:
+
+xhat_i = out_i.get('x_hat', out_i.get('recon', None))
+lik_i = out_i.get('likelihoods', out_i.get('probs', {}))
+
+with the keys your debug printed. For example, if the image model returned recon_img and likelihood_map, change to:
+
+xhat_i = out_i.get('recon_img', Non
