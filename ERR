@@ -1,42 +1,154 @@
-/home/work/dcvc/DCVC
-total 73
-drwxr-xr-x 2 work work  4096 Sep 16 18:30  .
-drwxr-xr-x 2 work work  4096 Sep 16  2025  ..
--rw-r--r-- 1 work work    85 Sep  8 19:08  .flake8
-drwxr-xr-x 2 work work  4096 Sep  8 19:08  .git
-drwxr-xr-x 2 work work  4096 Sep  8 19:08  .github
--rw-r--r-- 1 work work    61 Sep  8 19:08  .gitignore
-drwxr-xr-x 2 work work  4096 Sep 16 15:51  .ipynb_checkpoints
--rw-r--r-- 1 work work   444 Sep  8 19:08  CODE_OF_CONDUCT.md
--rw-r--r-- 1 work work   921 Sep  8 19:08  CONTRIBUTING.md
-drwxr-xr-x 2 work work  4096 Sep  8 19:08  DCVC-family
--rw-r--r-- 1 work work  1074 Sep  8 19:08  LICENSE.txt
--rw-r--r-- 1 work work 14429 Sep  8 19:08 'NOTICE .txt'
--rw-r--r-- 1 work work 15786 Sep  8 19:08  README.md
--rw-r--r-- 1 work work  2781 Sep  8 19:08  SECURITY.md
-drwxr-xr-x 2 work work  4096 Sep  9 15:17 'Untitled Folder'
-drwxr-xr-x 2 work work  4096 Sep  8 19:08  assets
--rw-r--r-- 1 work work   609 Sep  8 19:08  azure-pipelines.yml
-drwxr-xr-x 2 work work  4096 Sep  9 21:46  checkpoints
-drwxr-xr-x 2 work work  4096 Sep 16 18:29  data
--rw-r--r-- 1 work work  7333 Sep  8 19:08  dataset_config_example_yuv420.json
-drwxr-xr-x 2 work work  4096 Sep  9 18:44  media
--rw-r--r-- 1 work work    62 Sep  8 19:08  requirements.txt
-drwxr-xr-x 2 work work  4096 Sep  8 19:08  src
--rw-r--r-- 1 work work  6097 Sep  8 19:08  test_conditions.md
--rw-r--r-- 1 work work 20972 Sep  8 19:08  test_video.py
-drwxr-xr-x 2 work work  4096 Sep 16 18:30  tools
-drwxr-xr-x 2 work work  4096 Sep 16 20:03  train
-python:
-Python 3.10.12
-/bin/bash: line 1: warning: here-document at line 1 delimited by end-of-file (wanted `PY')
-abs src path: /home/work/dcvc/DCVC/src exists? True
-first sys.path entries: ['', '/home/work/.local/lib/python3.10/site-packages', '/home/work/dcvc', '/home/work/dcvc/miniconda3/envs/dcvc_env/lib/python312.zip', '/home/work/dcvc/miniconda3/envs/dcvc_env/lib/python3.12', '/home/work/dcvc/miniconda3/envs/dcvc_env/lib/python3.12/lib-dynload']
----------------------------------------------------------------------------
-NameError                                 Traceback (most recent call last)
-Cell In[31], line 10
-      8 print("abs src path:", p, "exists?", os.path.isdir(p))
-      9 print("first sys.path entries:", sys.path[:6])
----> 10 PY
+cell 3 output 
 
-NameError: name 'PY' is not defined
+cannot import cuda implementation for inference, fallback to pytorch.
+Imported src.models.image_model from: /home/work/dcvc/DCVC/src/models/image_model.py
+Imported src.models.video_model from: /home/work/dcvc/DCVC/src/models/video_model.py
+
+
+cell 4 output 
+
+A module that was compiled using NumPy 1.x cannot be run in
+NumPy 2.1.2 as it may crash. To support both 1.x and 2.x
+versions of NumPy, modules must be compiled with NumPy 2.0.
+Some module may need to rebuild instead e.g. with 'pybind11>=2.12'.
+
+If you are a user of the module, the easiest solution will be to
+downgrade to 'numpy<2' or try to upgrade the affected module.
+We expect that some modules will need time to support NumPy 2.
+
+Traceback (most recent call last):  File "/home/work/dcvc/miniconda3/envs/dcvc_env/lib/python3.12/runpy.py", line 198, in _run_module_as_main
+    return _run_code(code, main_globals, None,
+  File "/home/work/dcvc/miniconda3/envs/dcvc_env/lib/python3.12/runpy.py", line 88, in _run_code
+    exec(code, run_globals)
+  File "/home/work/dcvc/miniconda3/envs/dcvc_env/lib/python3.12/site-packages/ipykernel_launcher.py", line 18, in <module>
+    app.launch_new_instance()
+  File "/home/work/dcvc/miniconda3/envs/dcvc_env/lib/python3.12/site-packages/traitlets/config/application.py", line 1075, in launch_instance
+    app.start()
+  File "/home/work/dcvc/miniconda3/envs/dcvc_env/lib/python3.12/site-packages/ipykernel/kernelapp.py", line 739, in start
+    self.io_loop.start()
+  File "/home/work/dcvc/miniconda3/envs/dcvc_env/lib/python3.12/site-packages/tornado/platform/asyncio.py", line 211, in start
+    self.asyncio_loop.run_forever()
+  File "/home/work/dcvc/miniconda3/envs/dcvc_env/lib/python3.12/asyncio/base_events.py", line 645, in run_forever
+    self._run_once()
+  File "/home/work/dcvc/miniconda3/envs/dcvc_env/lib/python3.12/asyncio/base_events.py", line 1999, in _run_once
+    handle._run()
+  File "/home/work/dcvc/miniconda3/envs/dcvc_env/lib/python3.12/asyncio/events.py", line 88, in _run
+    self._context.run(self._callback, *self._args)
+  File "/home/work/dcvc/miniconda3/envs/dcvc_env/lib/python3.12/site-packages/ipykernel/kernelbase.py", line 519, in dispatch_queue
+    await self.process_one()
+  File "/home/work/dcvc/miniconda3/envs/dcvc_env/lib/python3.12/site-packages/ipykernel/kernelbase.py", line 508, in process_one
+    await dispatch(*args)
+  File "/home/work/dcvc/miniconda3/envs/dcvc_env/lib/python3.12/site-packages/ipykernel/kernelbase.py", line 400, in dispatch_shell
+    await result
+  File "/home/work/dcvc/miniconda3/envs/dcvc_env/lib/python3.12/site-packages/ipykernel/ipkernel.py", line 368, in execute_request
+    await super().execute_request(stream, ident, parent)
+  File "/home/work/dcvc/miniconda3/envs/dcvc_env/lib/python3.12/site-packages/ipykernel/kernelbase.py", line 767, in execute_request
+    reply_content = await reply_content
+  File "/home/work/dcvc/miniconda3/envs/dcvc_env/lib/python3.12/site-packages/ipykernel/ipkernel.py", line 455, in do_execute
+    res = shell.run_cell(
+  File "/home/work/dcvc/miniconda3/envs/dcvc_env/lib/python3.12/site-packages/ipykernel/zmqshell.py", line 577, in run_cell
+    return super().run_cell(*args, **kwargs)
+  File "/home/work/dcvc/miniconda3/envs/dcvc_env/lib/python3.12/site-packages/IPython/core/interactiveshell.py", line 3116, in run_cell
+    result = self._run_cell(
+  File "/home/work/dcvc/miniconda3/envs/dcvc_env/lib/python3.12/site-packages/IPython/core/interactiveshell.py", line 3171, in _run_cell
+    result = runner(coro)
+  File "/home/work/dcvc/miniconda3/envs/dcvc_env/lib/python3.12/site-packages/IPython/core/async_helpers.py", line 128, in _pseudo_sync_runner
+    coro.send(None)
+  File "/home/work/dcvc/miniconda3/envs/dcvc_env/lib/python3.12/site-packages/IPython/core/interactiveshell.py", line 3394, in run_cell_async
+    has_raised = await self.run_ast_nodes(code_ast.body, cell_name,
+  File "/home/work/dcvc/miniconda3/envs/dcvc_env/lib/python3.12/site-packages/IPython/core/interactiveshell.py", line 3639, in run_ast_nodes
+    if await self.run_code(code, result, async_=asy):
+  File "/home/work/dcvc/miniconda3/envs/dcvc_env/lib/python3.12/site-packages/IPython/core/interactiveshell.py", line 3699, in run_code
+    exec(code_obj, self.user_global_ns, self.user_ns)
+  File "/tmp/ipykernel_603/3077129816.py", line 5, in <module>
+    debug_mod = importlib.import_module('train.debug_model_io')
+  File "/home/work/dcvc/miniconda3/envs/dcvc_env/lib/python3.12/importlib/__init__.py", line 90, in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+  File "/home/work/dcvc/DCVC/train/debug_model_io.py", line 50, in <module>
+    import cv2
+  File "/home/work/.local/lib/python3.10/site-packages/cv2/__init__.py", line 181, in <module>
+    bootstrap()
+  File "/home/work/.local/lib/python3.10/site-packages/cv2/__init__.py", line 153, in bootstrap
+    native_module = importlib.import_module("cv2")
+  File "/home/work/dcvc/miniconda3/envs/dcvc_env/lib/python3.12/importlib/__init__.py", line 90, in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+---------------------------------------------------------------------------
+AttributeError                            Traceback (most recent call last)
+AttributeError: _ARRAY_API not found
+Failed to import train.debug_model_io — traceback below:
+Traceback (most recent call last):
+  File "/tmp/ipykernel_603/3077129816.py", line 5, in <module>
+    debug_mod = importlib.import_module('train.debug_model_io')
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/work/dcvc/miniconda3/envs/dcvc_env/lib/python3.12/importlib/__init__.py", line 90, in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<frozen importlib._bootstrap>", line 1387, in _gcd_import
+  File "<frozen importlib._bootstrap>", line 1360, in _find_and_load
+  File "<frozen importlib._bootstrap>", line 1331, in _find_and_load_unlocked
+  File "<frozen importlib._bootstrap>", line 935, in _load_unlocked
+  File "<frozen importlib._bootstrap_external>", line 999, in exec_module
+  File "<frozen importlib._bootstrap>", line 488, in _call_with_frames_removed
+  File "/home/work/dcvc/DCVC/train/debug_model_io.py", line 50, in <module>
+    import cv2
+  File "/home/work/.local/lib/python3.10/site-packages/cv2/__init__.py", line 181, in <module>
+    bootstrap()
+  File "/home/work/.local/lib/python3.10/site-packages/cv2/__init__.py", line 153, in bootstrap
+    native_module = importlib.import_module("cv2")
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/work/dcvc/miniconda3/envs/dcvc_env/lib/python3.12/importlib/__init__.py", line 90, in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ImportError: numpy.core.multiarray failed to import
+---------------------------------------------------------------------------
+ImportError                               Traceback (most recent call last)
+Cell In[35], line 5
+      3 # ensure the train module is importable
+      4 try:
+----> 5     debug_mod = importlib.import_module('train.debug_model_io')
+      6     importlib.reload(debug_mod)
+      7 except Exception:
+
+File ~/dcvc/miniconda3/envs/dcvc_env/lib/python3.12/importlib/__init__.py:90, in import_module(name, package)
+     88             break
+     89         level += 1
+---> 90 return _bootstrap._gcd_import(name[level:], package, level)
+
+File <frozen importlib._bootstrap>:1387, in _gcd_import(name, package, level)
+
+File <frozen importlib._bootstrap>:1360, in _find_and_load(name, import_)
+
+File <frozen importlib._bootstrap>:1331, in _find_and_load_unlocked(name, import_)
+
+File <frozen importlib._bootstrap>:935, in _load_unlocked(spec)
+
+File <frozen importlib._bootstrap_external>:999, in exec_module(self, module)
+
+File <frozen importlib._bootstrap>:488, in _call_with_frames_removed(f, *args, **kwds)
+
+File ~/dcvc/DCVC/train/debug_model_io.py:50
+     47 import traceback
+     48 from glob import glob
+---> 50 import cv2
+     51 import numpy as np
+     52 import torch
+
+File ~/.local/lib/python3.10/site-packages/cv2/__init__.py:181
+    176             if DEBUG: print("Extra Python code for", submodule, "is loaded")
+    178     if DEBUG: print('OpenCV loader: DONE')
+--> 181 bootstrap()
+
+File ~/.local/lib/python3.10/site-packages/cv2/__init__.py:153, in bootstrap()
+    149 if DEBUG: print("Relink everything from native cv2 module to cv2 package")
+    151 py_module = sys.modules.pop("cv2")
+--> 153 native_module = importlib.import_module("cv2")
+    155 sys.modules["cv2"] = py_module
+    156 setattr(py_module, "_native", native_module)
+
+File ~/dcvc/miniconda3/envs/dcvc_env/lib/python3.12/importlib/__init__.py:90, in import_module(name, package)
+     88             break
+     89         level += 1
+---> 90 return _bootstrap._gcd_import(name[level:], package, level)
+
+ImportError: numpy.core.multiarray failed to import
+​
