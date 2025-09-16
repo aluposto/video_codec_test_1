@@ -1,110 +1,160 @@
-Thanks — that traceback happened because the previous shell cell used a here-document (python - <<'PY') which doesn't work inside a Jupyter shell cell the same way. No problem — we'll fix this cleanly from inside the notebook.
+Good — we'll do the clean environment fix (Option 1). Below are exact, copy-pasteable notebook cells and shell commands to run in your Jupyter session (or a terminal). Follow them in order. After the installs you must restart the kernel — I show how. I also include verification and quick troubleshooting steps.
 
-Below are exact cells to run in your notebook (copy–paste each block into a cell and execute, in order). They:
-
-1. set the notebook cwd to the repo root,
+> ⚠️ Important: these commands modify packages in the Python environment your notebook kernel is using. Make sure you run them in the same environment (the notebook's sys.executable). If you want, paste the output of !which python before running and I’ll confirm.
 
 
-2. insert the repository src/ absolutely into sys.path,
-
-
-3. verify importing src.models.image_model and src.models.video_model,
-
-
-4. run the debug script's main() in-process (so you get the printed outputs here).
-
-
-
-Run the cells one at a time and paste any error output if something fails.
 
 
 ---
 
-Cell 1 — set working directory (adjust path if different)
+0) Confirm the Python executable & current versions (RUN THIS FIRST)
 
-# Cell 1 — set cwd to repo root (change path below if your repo is elsewhere)
-import os
-repo_root = "/home/work/dcvc/DCVC"   # <- edit this if your repo root differs
-assert os.path.isdir(repo_root), f"Repo root not found: {repo_root}"
-os.chdir(repo_root)
-print("cwd now:", os.getcwd())
-print("src exists:", os.path.isdir(os.path.join(repo_root, "src")))
+Run this cell in the notebook to confirm the environment we will modify:
 
-
----
-
-Cell 2 — ensure absolute src is on sys.path
-
-# Cell 2 — insert absolute src path into sys.path
-import sys, os
-repo_root = os.path.abspath(os.getcwd())
-abs_src = os.path.join(repo_root, "src")
-if not os.path.isdir(abs_src):
-    raise RuntimeError(f"src folder not found at expected location: {abs_src}")
-if abs_src not in sys.path:
-    sys.path.insert(0, abs_src)
-print("Inserted abs_src into sys.path:", abs_src in sys.path)
+# Python cell: confirm environment & versions
+import sys, site, subprocess
+print("sys.executable:", sys.executable)
+print("Python version:", sys.version.replace('\\n',' '))
 print("sys.path[0:6]:", sys.path[:6])
-
-
----
-
-Cell 3 — test importing the model modules (quick check)
-
-# Cell 3 — test import of model modules and print their file paths
-import importlib, traceback
 try:
-    m_img = importlib.import_module('src.models.image_model')
-    m_vid = importlib.import_module('src.models.video_model')
-    print("Imported src.models.image_model from:", getattr(m_img, '__file__', 'no __file__'))
-    print("Imported src.models.video_model from:", getattr(m_vid, '__file__', 'no __file__'))
-except Exception:
-    traceback.print_exc()
-    raise
-
-If this cell succeeds (prints file paths), proceed. If it raises, copy the traceback here.
+    import numpy, cv2
+    print("NUMPY:", numpy.__version__, "  OPENCV:", cv2.__version__)
+except Exception as e:
+    print("Existing numpy/opencv import failed or not present:", e)
 
 
 ---
 
-Cell 4 — run the debug script in-process (recommended)
+1) Uninstall conflicting / user-level OpenCV packages (shell)
 
-# Cell 4 — import and run debug script's main() in the same kernel
+Run this shell cell (copy/paste into notebook). It removes any opencv-* packages from both environment and user site.
+
+# Shell cell
+!pip uninstall -y opencv-python opencv-python-headless opencv-contrib-python || true
+!python -m pip uninstall -y --user opencv-python opencv-python-headless opencv-contrib-python || true
+
+
+---
+
+2) Ensure a compatible NumPy version (shell)
+
+Many binary wheels expect NumPy < 2. We'll install a NumPy < 2 to be safe.
+
+# Shell cell: install a compatible numpy (<2) and upgrade pip/wheel
+!pip install --upgrade pip setuptools wheel
+!pip install --upgrade "numpy<2"
+
+If you prefer to keep NumPy 2.x, skip this step — but you may need to rebuild other extensions. Using numpy<2 is the quicker path.
+
+
+---
+
+3) Install a stable OpenCV build built for your Python (shell)
+
+Install the headless OpenCV (no GUI deps) into the same environment:
+
+# Shell cell
+!pip install --no-cache-dir --upgrade opencv-python-headless==4.7.0.72
+
+If you need GUI features (imshow), instead use opencv-python==4.7.0.72. But opencv-python-headless is recommended for server/notebook.
+
+
+---
+
+4) Verify installs (shell)
+
+Run this to show versions and to test import in the same environment:
+
+# Shell cell
+!python - <<'PY'
+import sys
+print("python:", sys.executable)
+try:
+    import numpy, cv2
+    print("numpy:", numpy.__version__)
+    print("cv2:", cv2.__version__)
+    # quick cv2 check: create an array and convert color (no GUI)
+    import numpy as np
+    a = np.zeros((10,10,3), dtype=np.uint8)
+    b = cv2.cvtColor(a, cv2.COLOR_BGR2RGB)
+    print("cv2 basic op OK, output shape:", b.shape)
+except Exception as e:
+    print("Import error:", repr(e))
+PY
+
+If you see numpy and cv2 versions printed and cv2 basic op OK, you're good.
+
+
+---
+
+5) Restart the Jupyter kernel (important!)
+
+After installing binary packages, you must restart the kernel so the new native extensions are loaded.
+
+In Jupyter: Menu → Kernel → Restart Kernel.
+
+Or run this cell (will not always fully restart in all frontends; use the UI restart if unsure):
+
+
+# Python cell (attempt graceful restart)
+import os, sys
+print("Now please restart the kernel from the UI (Kernel -> Restart).")
+
+After restart, re-run the Cell 0 or the verification cell to confirm versions.
+
+
+---
+
+6) Re-run the debug script (recommended in-notebook)
+
+After the kernel restart and re-running the initial confirm cell, run the debug script (imageio version or cv2 version — now cv2 should work). Use either:
+
+# Shell cell
+!python train/debug_model_io.py --clip data/train_videos/game_A_level1_clip01.mp4 --device cuda --frames 5
+
+or import & run in-process (Python cell):
+
+# Python cell (in-process run)
 import importlib, sys, traceback
-# ensure the train module is importable
-try:
-    debug_mod = importlib.import_module('train.debug_model_io')
-    importlib.reload(debug_mod)
-except Exception:
-    print("Failed to import train.debug_model_io — traceback below:")
-    traceback.print_exc()
-    raise
-
-# Run debug main with argv override
-old_argv = sys.argv.copy()
 sys.argv = ['train/debug_model_io.py', '--clip', 'data/train_videos/game_A_level1_clip01.mp4', '--device', 'cuda', '--frames', '5']
 try:
-    debug_mod.main()
+    mod = importlib.import_module('train.debug_model_io')
+    importlib.reload(mod)
+    mod.main()
 except Exception:
-    print("Exception while running debug_mod.main():")
     traceback.print_exc()
-finally:
-    sys.argv = old_argv
 
 
 ---
 
-If you get errors
+Troubleshooting
 
-If Cell 3 fails to import src.models.image_model, paste that full traceback here.
+If cv2 import still fails with NumPy ABI errors:
 
-If Cell 4 runs but prints the === Image model output === / === Video model output === sections, copy/paste those sections here and I will patch train/train_video.py to match the exact keys.
+Confirm there are no conflicting OpenCV installs in ~/.local or other locations:
 
-If debug_mod.main() errors during model instantiation with a TypeError about missing constructor args, paste the traceback — I’ll update the debug runner to call the models correctly.
+!python -c "import site, sys; print('user site:', site.getusersitepackages()); import pkgutil; print(pkgutil.iter_modules().__class__)"
 
+Try pip uninstall again and ensure you reinstall in the same environment the kernel uses (check sys.executable from Cell 0).
+
+As last resort, create a fresh conda env and start a new kernel tied to it.
+
+
+If you downgraded NumPy but another package requires NumPy>=2, you might have dependency conflicts. In that case, consider a clean conda env:
+
+
+# Terminal (not notebook) recommended
+conda create -n dcvc_env python=3.10 -y
+conda activate dcvc_env
+conda install -c conda-forge python=3.10 numpy=1.25 opencv ffmpeg -y
+pip install -r requirements.txt  # install other Python deps
+
+Then configure your notebook to use that kernel.
 
 
 ---
 
-Run those cells and paste the outputs (or the error tracebacks) here. I’ll take it from there and produce the exact edits needed for training.
+Final note
+
+Run the steps above and paste the outputs of the verification cell (Step 4) here if anything fails. If everything works, run the debug script and paste the === Image model output === and === Video model output === sections — I’ll then patch train/train_video.py to match the exact keys and likelihood formats your models return.
 
