@@ -1,1 +1,3 @@
-python -c "import importlib, sys; m=importlib.import_module('cv2'); print('cv2 ok', m.__version__)"
+pip uninstall -y opencv-python opencv-python-headless opencv-contrib-python || true
+pip cache purge  # optional: clear pip cache to avoid reusing a bad wheel
+pip install opencv-python-headless==4.7.0.72
