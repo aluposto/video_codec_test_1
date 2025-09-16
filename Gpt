@@ -1,0 +1,181 @@
+Got it — you’re running this from a Jupyter notebook. Below I give exact, copy-pasteable notebook cells (shell lines prefixed with ! where appropriate, and Python cells where needed) so you can:
+
+ensure the repo src/ is on sys.path,
+
+verify the absolute path to src,
+
+(option A) run the debug_model_io.py script from the notebook using !python or %run, or
+
+(option B — recommended) import the debug script as a module and call its main() directly after setting up sys.path (no separate process).
+
+
+Pick either Option A or B — both are provided. Run the cells in order.
+
+
+---
+
+0) Start: set your notebook working directory to repo root (one-time)
+
+Run this cell (change path if your repo root is different):
+
+# Python cell
+import os, sys
+repo_root = "/home/work/dcvc/DCVC"   # <-- change this if your repo is elsewhere
+os.chdir(repo_root)
+print("cwd:", os.getcwd())
+print("repo_root exists:", os.path.isdir(repo_root))
+print("src exists:", os.path.isdir(os.path.join(repo_root, "src")))
+
+
+---
+
+1) Quick diagnostic from notebook (shell + python)
+
+# Shell cell
+!pwd
+!ls -la
+!echo "python:"; python -V
+!python - <<'PY'
+import os,sys
+p = os.path.abspath('src')
+print("abs src path:", p, "exists?", os.path.isdir(p))
+print("first sys.path entries:", sys.path[:6])
+PY
+
+If abs src path is True you’re ready.
+
+
+---
+
+2) Add src to Python path inside the notebook (Python cell)
+
+Run this so any imports see src:
+
+# Python cell
+import os, sys
+repo_root = os.path.abspath(os.getcwd())   # should be /home/work/dcvc/DCVC
+abs_src = os.path.join(repo_root, "src")
+if os.path.isdir(abs_src) and abs_src not in sys.path:
+    sys.path.insert(0, abs_src)
+print("Inserted src:", abs_src in sys.path)
+print("sys.path[0]:", sys.path[0])
+
+
+---
+
+Option A — Run the debug script as a separate process (simple)
+
+This runs the script in a new Python process (same as running in terminal). Use !python or %run. Either works; %run runs in the same IPython process which may reuse sys.path; !python runs a shell subprocess.
+
+Using !python
+
+# Shell cell
+!python train/debug_model_io.py --clip data/train_videos/game_A_level1_clip01.mp4 --device cuda --frames 5
+
+Or using IPython magic %run (runs inside this kernel)
+
+# Python cell
+%run train/debug_model_io.py --clip data/train_videos/game_A_level1_clip01.mp4 --device cuda --frames 5
+
+If you used Option A and get the same ModuleNotFoundError, ensure the file train/debug_model_io.py contains the top-of-file path-insertion code we discussed (the ABS_SRC patch). If it doesn't, run Option B.
+
+
+---
+
+Option B — Import the debug script and call main() (recommended)
+
+This avoids spawning a separate process and uses the notebook's sys.path. Run the following cells.
+
+1. Ensure src is on sys.path (repeat if necessary):
+
+
+
+# Python cell: ensure src on sys.path (again)
+import os, sys
+repo_root = os.path.abspath(os.getcwd())
+abs_src = os.path.join(repo_root, "src")
+if abs_src not in sys.path:
+    sys.path.insert(0, abs_src)
+print("abs_src on sys.path:", abs_src in sys.path)
+
+2. Import and run the debug_model_io module:
+
+
+
+# Python cell
+import importlib, traceback
+
+try:
+    # import the debug script as a module
+    debug_mod = importlib.import_module('train.debug_model_io')
+    importlib.reload(debug_mod)  # reload in case you edited it
+    # The script defines a `main()` that uses argparse; call it by passing a sys.argv override
+    import sys
+    old_argv = sys.argv.copy()
+    sys.argv = ['train/debug_model_io.py', '--clip', 'data/train_videos/game_A_level1_clip01.mp4', '--device', 'cuda', '--frames', '5']
+    try:
+        debug_mod.main()
+    finally:
+        sys.argv = old_argv
+except Exception as e:
+    print("Exception while running debug_mod.main():")
+    traceback.print_exc()
+
+If main() prints the image/video model outputs, copy/paste those printed sections here and I’ll adapt the training script. If there’s an exception, the traceback will appear in the notebook cell output — paste that if you want further help.
+
+
+---
+
+3) If ModuleNotFoundError still appears when running the script
+
+Make sure train/debug_model_io.py has the ABS_SRC insertion at the very top. You can insert it from the notebook with this cell (this will overwrite the auto-locate block — safe):
+
+# Python cell: inject ABS_SRC insertion at top of file
+file_path = 'train/debug_model_io.py'
+with open(file_path, 'r', encoding='utf-8') as f:
+    txt = f.read()
+
+# replace existing auto-locate (if present) by searching for '# --- AUTO-LOCATE' or '# --- FORCE-ADD' markers.
+import re
+if '# --- FORCE-ADD ABSOLUTE' not in txt:
+    patch = """# --- FORCE-ADD ABSOLUTE 'src' PATH ---
+import os, sys
+ABS_SRC = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'src'))
+if not os.path.isdir(ABS_SRC):
+    alt = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'src'))
+    if os.path.isdir(alt):
+        ABS_SRC = alt
+print(f"[DEBUG] Inserting ABS_SRC into sys.path: {ABS_SRC}")
+if ABS_SRC not in sys.path:
+    sys.path.insert(0, ABS_SRC)
+# --- end force-add ---
+"""
+    # Prepend patch to file
+    with open(file_path, 'w', encoding='utf-8') as f:
+        f.write(patch + '\n' + txt)
+    print("Patched train/debug_model_io.py with ABS_SRC insertion.")
+else:
+    print("Patch already present in file (skipping).")
+
+After patching, re-run Option A (!python ...) or Option B (import and call main()).
+
+
+---
+
+4) Helpful quick checks you can run in notebook
+
+If you want to quickly verify that Python can import src.models.image_model right now, run:
+
+# Python cell
+import importlib, sys, traceback
+try:
+    m = importlib.import_module('src.models.image_model')
+    print("Imported OK:", getattr(m, '__file__', None))
+except Exception:
+    traceback.print_exc()
+
+
+---
+
+If you run any of the above cells and get output (either successful model output or a traceback), paste the relevant portion here and I’ll continue. If the debug runs successfully, paste the printed === Image model output === and === Video model output === sections and I’ll immediately patch train/train_video.py to match your models’ keys.
+
