@@ -1,8 +1,33 @@
-pwd; python - <<'PY'
-import os, sys
-print("python exe:", sys.executable)
-print("cwd:", os.getcwd())
-p = os.path.abspath('src')
-print("abs src path:", p, "exists?", os.path.isdir(p))
-print("first 8 sys.path entries:", sys.path[:8])
-PY
+import pathlib
+
+p = pathlib.Path("training.py")
+txt = p.read_text()
+
+# Replace the old block with the correct import
+new_block = """try:
+    from src.models.video_model import DMC as VideoModel
+except Exception:
+    VideoModel = None
+"""
+
+# If "DMC" not already there, inject it
+if "from src.models.video_model import DMC as VideoModel" not in txt:
+    # naive replace: drop any old "from src.models..." import block
+    lines = txt.splitlines()
+    new_lines = []
+    replaced = False
+    for line in lines:
+        if "from src.models" in line and "VideoModel" in line:
+            if not replaced:
+                new_lines.append("try:")
+                new_lines.append("    from src.models.video_model import DMC as VideoModel")
+                new_lines.append("except Exception:")
+                new_lines.append("    VideoModel = None")
+                replaced = True
+            continue
+        new_lines.append(line)
+    txt2 = "\n".join(new_lines)
+    p.write_text(txt2)
+    print("✅ Patched training.py to import DMC correctly.")
+else:
+    print("Already patched.")
