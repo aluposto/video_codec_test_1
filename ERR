@@ -1,66 +1,23 @@
-from pathlib import Path
-import textwrap
+import sys, os
+py = sys.executable
+print("Running training with:", py)
+os.system(f'PYTHONPATH=$PWD "{py}" training.py '
+          '--train-glob "data/frames/train/**/*.png" '
+          '--val-glob "data/frames/val/**/*.png" '
+          '--patch-size 256 --temporal-len 4 --batch-size 6 '
+          '--epochs 30 --cuda --amp '
+          '--pretrained "./checkpoints/cvpr2025_video.pth.tar" '
+          '--lambda-rd 0.01 '
+          '--save-dir "./checkpoints_finetune_lambda0.01" '
+          '--log-dir "./logs/dcvc_finetune_lambda0.01" '
+          '--workers 4')
 
-p = Path("training.py")
-txt = p.read_text()
 
-if "def encode_decode_sequence(model, seq, qp=0):" not in txt:
-    print("encode_decode_sequence not found in training.py — aborting patch.")
-else:
-    # Build the new except block as a single string
-    new_block = textwrap.dedent(r'''
-        except Exception as e:
-            # compress failed; warn and fallback to a differentiable decoder path that uses model parameters
-            print("Warning: model.compress() failed during training wrapper:", e)
-            try:
-                # Do NOT use torch.no_grad() here — we need gradients
-                import torch.nn.functional as F
-                x = seq[:,0]  # first frame in sequence
-                # fallback path: try to run encoder/decoder directly
-                q_enc = model.q_encoder[0:1] if hasattr(model,"q_encoder") else None
-                q_dec = model.q_decoder[0:1] if hasattr(model,"q_decoder") else None
-                q_recon = model.q_recon[0:1] if hasattr(model,"q_recon") else None
-                # feature adaptor
-                feat_in = F.pixel_unshuffle(x,8)
-                if hasattr(model,"feature_adaptor_i"):
-                    feature = model.feature_adaptor_i(feat_in)
-                else:
-                    feature = feat_in
-                ctx, ctx_t = (None,None)
-                if hasattr(model,"feature_extractor"):
-                    qf = model.q_feature[0:1] if hasattr(model,"q_feature") else None
-                    try:
-                        ctx, ctx_t = model.feature_extractor(feature, qf)
-                    except Exception:
-                        pass
-                # encoder -> y
-                if hasattr(model,"encoder"):
-                    y = model.encoder(x, ctx if ctx is not None else feature, q_enc)
-                else:
-                    y = feature
-                # decoder -> recon
-                if hasattr(model,"decoder") and hasattr(model,"recon_generation_net"):
-                    feature_dec = model.decoder(y, ctx if ctx is not None else feature, q_dec)
-                    x_hat = model.recon_generation_net(feature_dec, q_recon).clamp_(0,1)
-                else:
-                    x_hat = x
-            except Exception as e2:
-                print("Warning: differentiable fallback also failed:", e2)
-                x_hat = x
-            bits = 0
-    ''')
 
-    # Replace the old fallback with the new one
-    import re
-    patched, n = re.subn(
-        r"except Exception as e:[\s\S]+?bits\s*=\s*0",
-        new_block.strip(),
-        txt,
-        count=1
-    )
 
-    if n == 0:
-        print("Did not find old fallback block to replace.")
-    else:
-        p.write_text(patched)
-        print("✅ Patched training.py — differentiable fallback inserted.")
+Running training with: /home/work/dcvc/miniconda3/envs/dcvc_env/bin/python
+  File "/home/work/dcvc/DCVC/training.py", line 149
+    return {'x_hat': x_hat_seq, 'likelihoods': None, 'bpp_tensor': bpp_tensor}
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+SyntaxError: 'return' outside function
+256
