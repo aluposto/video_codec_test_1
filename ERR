@@ -1,23 +1,51 @@
-import sys, os
-py = sys.executable
-print("Running training with:", py)
-os.system(f'PYTHONPATH=$PWD "{py}" training.py '
-          '--train-glob "data/frames/train/**/*.png" '
-          '--val-glob "data/frames/val/**/*.png" '
-          '--patch-size 256 --temporal-len 4 --batch-size 6 '
-          '--epochs 30 --cuda --amp '
-          '--pretrained "./checkpoints/cvpr2025_video.pth.tar" '
-          '--lambda-rd 0.01 '
-          '--save-dir "./checkpoints_finetune_lambda0.01" '
-          '--log-dir "./logs/dcvc_finetune_lambda0.01" '
-          '--workers 4')
+  if isinstance(bs, (bytes, bytearray)):
+                bits = len(bs) * 8
+            elif hasattr(bs, "__len__"):
+                try:
+                    bits = len(bs) * 8
+                except Exception:
+                    bits = 0
+            else:
+                bits = 0
 
+            # decompress to get reconstruction
+            try:
+                sps = {'height': H, 'width': W, 'ec_part': 0}
+                dec = model.decompress(bs, sps, qp)
+                x_hat = dec.get('x_hat', x)
+            except Exception as e:
+                # decompress failed, fallback to input
+                print("Warning: model.decompress() failed inside training wrapper:", e)
+                x_hat = x
 
+        x_hat_list.append(x_hat.unsqueeze(1))
+        total_bits += bits
 
-
-Running training with: /home/work/dcvc/miniconda3/envs/dcvc_env/bin/python
-  File "/home/work/dcvc/DCVC/training.py", line 149
+    x_hat_seq = torch.cat(x_hat_list, dim=1) if len(x_hat_list) > 0 else seq
+    # normalize bpp per-frame with same denom used elsewhere in training.py (num_pixels = B*H*W)
+    denom = float(B * H * W) if (B * H * W) > 0 else 1.0
+    bpp_val = float(total_bits) / denom
+    # return bpp as a scalar tensor on device
+    bpp_tensor = torch.tensor(bpp_val, device=device, dtype=torch.float32)
     return {'x_hat': x_hat_seq, 'likelihoods': None, 'bpp_tensor': bpp_tensor}
-    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-SyntaxError: 'return' outside function
-256
+
+
+
+def run_epoch(model, loader, optimizer, scaler, device, args, epoch, is_train=True):
+    model.train() if is_train else model.eval()
+    total_loss = 0.0
+    total_dist = 0.0
+    total_bpp = 0.0
+    steps = 0
+    startt = time.time()
+
+    use_video_api = hasattr(model, "compress") and hasattr(model, "decompress")
+
+    for it, seq in enumerate(loader):
+        # seq: [B,T,3,H,W]
+        seq = seq.to(device, non_blocking=True)
+        B,T,C,H,W = seq.shape
+        num_pixels = B * H * W  # normalized per-frame; keep same denom as previous code
+
+        # run model: if video API available use encode/decode wrapper, else call model(seq)
+        if use_video_api:
