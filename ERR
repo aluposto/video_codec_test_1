@@ -1,6 +1,4 @@
-Child PYTHONPATH= /home/work/dcvc/DCVC
-sys.path[0:5]= ['', '/home/work/dcvc/DCVC', '/usr/lib/python310.zip', '/usr/lib/python3.10', '/usr/lib/python3.10/lib-dynload']
-Traceback (most recent call last):
-  File "<string>", line 1, in <module>
-ModuleNotFoundError: No module named 'src.models'
-​
+Cell In[40], line 6
+    os.system(f'PYTHONPATH=$PWD "{py}" -c \"from src.models.video_model import DMC; import inspect; print(\\'Imported DMC OK\\'); print(\\'DMC.__init__ sig=\\', inspect.signature(DMC.__init__))\"')
+              ^
+SyntaxError: invalid syntax. Perhaps you forgot a comma?
