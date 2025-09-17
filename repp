@@ -1,32 +1,10 @@
-# Patch training.py: ensure repo root is on sys.path so `import src.models` works
-from pathlib import Path
-import re, os
-
-p = Path("training.py")
-txt = p.read_text()
-
-insertion = (
-    "import sys, os\n"
-    "# ensure repo root is on PYTHONPATH so 'src' package can be imported when running as a script\n"
-    "repo_root = os.path.dirname(os.path.abspath(__file__))\n"
-    "if repo_root not in sys.path:\n"
-    "    sys.path.insert(0, repo_root)\n\n"
-)
-
-# Insert only if not already present
-if "repo_root = os.path.dirname(os.path.abspath(__file__))" not in txt:
-    # place insertion at top (after shebang and docstring if present)
-    # find end of initial docstring if any
-    insert_at = 0
-    if txt.startswith(("\"\"\"", "'''")):
-        delim = '"""' if txt.startswith('"""') else "'''"
-        end = txt.find(delim, len(delim))
-        if end != -1:
-            insert_at = end + len(delim)
-    txt2 = txt[:insert_at] + "\n" + insertion + txt[insert_at:]
-    p.write_text(txt2)
-    print("Patched training.py to insert repo_root into sys.path. Showing top of file:\n")
-    print("\n".join(txt2.splitlines()[:40]))
-else:
-    print("training.py already contains repo_root insertion. Showing top of file:\n")
-    print("\n".join(txt.splitlines()[:40]))
+!python training.py \
+  --train-glob "data/frames/train/**/*.png" \
+  --val-glob "data/frames/val/**/*.png" \
+  --patch-size 256 --temporal-len 4 --batch-size 6 \
+  --epochs 30 --cuda --amp \
+  --pretrained "./checkpoints/cvpr2025_video.pth.tar" \
+  --lambda-rd 0.01 \
+  --save-dir "./checkpoints_finetune_lambda0.01" \
+  --log-dir "./logs/dcvc_finetune_lambda0.01" \
+  --workers 4
