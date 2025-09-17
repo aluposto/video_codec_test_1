@@ -1,50 +1,97 @@
-Nice — your diagnostics show the src folder is in the current working directory (/home/work/dcvc/DCVC/src). That means PYTHONPATH=$PWD should allow a subprocess to import src.models. The earlier failures were caused by how the heredoc was run in notebook cells — let's do a simpler, foolproof test and then run training.
+Good — thanks, that output is exactly the clue we need.
 
-Please run these two notebook cells one at a time (copy-paste exactly). They avoid heredocs and are robust inside Jupyter.
+ModuleNotFoundError: No module named 'src.models' even though PYTHONPATH points at /home/work/dcvc/DCVC means Python isn’t treating src as a package in the subprocess. The simplest, reliable fix is to make src and src/models explicit packages by creating __init__.py files inside them, and then re-run the import using the same Python interpreter your notebook uses.
 
-
----
-
-Cell 1 — quick subprocess import test (one-liner, safe)
-
-# Test whether a subprocess can import the repo's src package
-!PYTHONPATH=$PWD python -c "import sys,os,inspect; print('Child PYTHONPATH=', os.environ.get('PYTHONPATH')); print('sys.path[0:5]=', sys.path[:5]); from src.models.video_model import DMC; print('Imported DMC OK, __init__ sig=', inspect.signature(DMC.__init__))"
-
-If that prints Imported DMC OK... then subprocesses can import src and you can proceed to the training command below.
-
-If it prints an ImportError/ModuleNotFoundError, copy the full output here.
+Do exactly the following (copy-paste each block into separate notebook cells and run them).
 
 
 ---
 
-Cell 2 — run training with PYTHONPATH set
+1) Create package __init__.py files (idempotent — safe)
 
-# Run training ensuring the subprocess has the repo root on PYTHONPATH
-!PYTHONPATH=$PWD python training.py \
-  --train-glob "data/frames/train/**/*.png" \
-  --val-glob "data/frames/val/**/*.png" \
+# create __init__.py in src and src/models (no-op if they already exist)
+!touch src/__init__.py
+!touch src/models/__init__.py
+# show them to confirm
+!ls -la src | sed -n '1,120p'
+!ls -la src/models | sed -n '1,120p'
+
+If those files are created, proceed.
+
+
+---
+
+2) Confirm which Python your notebook is using — use that exact interpreter for subprocess checks
+
+Run this cell (Python cell):
+
+import sys, os
+print("Notebook Python executable:", sys.executable)
+print("Notebook Python version:", sys.version)
+print("PWD:", os.getcwd())
+
+We’ll use that sys.executable to run the subprocess test so subprocess imports use the same interpreter/env as your notebook (avoids system vs conda mismatch).
+
+
+---
+
+3) Subprocess import test (use the same interpreter)
+
+Run this cell (shell via Python executable — safe):
+
+# replace {PY} with the printed sys.executable from step 2 if you prefer to type it;
+# below uses Python's f-string to call the same interpreter from the notebook.
+import sys, os
+py = sys.executable
+print("Running subprocess test with:", py)
+os.system(f'PYTHONPATH=$PWD "{py}" -c \"from src.models.video_model import DMC; import inspect; print(\\'Imported DMC OK\\'); print(\\'DMC.__init__ sig=\\', inspect.signature(DMC.__init__))\"')
+
+If it prints Imported DMC OK — great. If you still see ModuleNotFoundError, paste the full output here.
+
+
+---
+
+4) If import test succeeded — run training with the same interpreter and PYTHONPATH
+
+Use the same sys.executable so child process uses your conda environment where torch/cuda live:
+
+import sys, os
+py = sys.executable
+print("Running training with:", py)
+os.system(f'PYTHONPATH=$PWD \"{py}\" training.py \
+  --train-glob \"data/frames/train/**/*.png\" \
+  --val-glob \"data/frames/val/**/*.png\" \
   --patch-size 256 --temporal-len 4 --batch-size 6 \
   --epochs 30 --cuda --amp \
-  --pretrained "./checkpoints/cvpr2025_video.pth.tar" \
+  --pretrained \"./checkpoints/cvpr2025_video.pth.tar\" \
   --lambda-rd 0.01 \
-  --save-dir "./checkpoints_finetune_lambda0.01" \
-  --log-dir "./logs/dcvc_finetune_lambda0.01" \
-  --workers 4
+  --save-dir \"./checkpoints_finetune_lambda0.01\" \
+  --log-dir \"./logs/dcvc_finetune_lambda0.01\" \
+  --workers 4')
+
+Run that in a notebook cell and paste any error output you get.
 
 
 ---
 
-If training fails again, do not worry — paste the full output (the traceback) here. Two likely next issues and how I’ll handle them immediately:
+Why this will work
 
-If you see ModuleNotFoundError again, paste the exact output and I’ll tell you the exact path to set in PYTHONPATH (but based on your last message it should work).
+Creating __init__.py ensures Python treats src and src/models as importable packages in subprocesses.
 
-If it imports OK but fails later at model.update() / model.compress() due to missing compiled extensions (e.g., MLCodec_extensions_cpp, RANS encoder, or CUDA helpers), paste that traceback and I will:
-
-provide a robust fallback training mode that skips entropy coding and optimizes only MSE (so you can still fine-tune decoder weights), or
-
-patch the wrapper to call internal decoder modules (best-effort) to produce reconstructions without the C++ coder.
+Running the child process with the same Python executable your notebook is using avoids differences between system Python and your conda env (this was likely the root cause earlier).
 
 
 
-Run Cell 1 now and paste the result if it fails — otherwise run Cell 2 and paste any error output you get.
+---
+
+If you still see errors afterward
+
+Paste the entire output of the subprocess (the traceback). If the failure occurs inside the model (e.g., on model.update() or MLCodec_extensions_cpp missing), I will immediately provide one of two fallback patches:
+
+Fallback A (recommended if C++ coder missing): train with MSE-only loss (skip entropy/bpp) so you can fine-tune the decoder now and add entropy/bitrate later.
+
+Fallback B: use internal decoder-only path (call module subcomponents) to approximate reconstructions and approximate bpp using tensor likelihood proxies.
+
+
+Tell me once the import test succeeded (or paste the failure). I’ll then either run the training or apply the safe fallback patch.
 
