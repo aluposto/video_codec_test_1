@@ -1,21 +1,6 @@
-# Run this to capture the exact import error and show top of the file for context
-import traceback, sys, os
-from pathlib import Path
-
-print("CWD:", Path.cwd())
-print("Exists:", Path("src/models/video_model.py").exists())
-print("sys.path[:6]:", sys.path[:6])
-print("-" * 60)
-try:
-    from src.models.video_model import DMC
-    print("SUCCESS: imported DMC ->", DMC)
-    import inspect
-    try:
-        print("DMC.__init__ signature:", inspect.signature(DMC.__init__))
-    except Exception as e:
-        print("Could not get signature:", e)
-except Exception:
-    print("IMPORT FAILED — full traceback below:")
-    traceback.print_exc()
-    print("\n--- Showing src/models/video_model.py (lines 1-140) for context ---\n")
-    os.system("sed -n '1,140p' src/models/video_model.py")
+CWD: /home/work/dcvc/DCVC
+Exists: True
+sys.path[:6]: ['', '/home/work/.local/lib/python3.10/site-packages', '/home/work', '/home/work/dcvc/miniconda3/envs/dcvc_env/lib/python312.zip', '/home/work/dcvc/miniconda3/envs/dcvc_env/lib/python3.12', '/home/work/dcvc/miniconda3/envs/dcvc_env/lib/python3.12/lib-dynload']
+------------------------------------------------------------
+SUCCESS: imported DMC -> <class 'src.models.video_model.DMC'>
+DMC.__init__ signature: (self)
