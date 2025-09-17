@@ -1,97 +1,51 @@
-Good — thanks, that output is exactly the clue we need.
+Ah — the issue is just quoting inside the f-string. In a Jupyter cell, Python got confused by the backslashes. Let’s make it simple: write the little test script to a file, then run it with os.system (no messy escaping).
 
-ModuleNotFoundError: No module named 'src.models' even though PYTHONPATH points at /home/work/dcvc/DCVC means Python isn’t treating src as a package in the subprocess. The simplest, reliable fix is to make src and src/models explicit packages by creating __init__.py files inside them, and then re-run the import using the same Python interpreter your notebook uses.
-
-Do exactly the following (copy-paste each block into separate notebook cells and run them).
+Please run these two cells:
 
 
 ---
 
-1) Create package __init__.py files (idempotent — safe)
+Cell 1 — write the test script
 
-# create __init__.py in src and src/models (no-op if they already exist)
-!touch src/__init__.py
-!touch src/models/__init__.py
-# show them to confirm
-!ls -la src | sed -n '1,120p'
-!ls -la src/models | sed -n '1,120p'
-
-If those files are created, proceed.
-
-
----
-
-2) Confirm which Python your notebook is using — use that exact interpreter for subprocess checks
-
-Run this cell (Python cell):
-
-import sys, os
-print("Notebook Python executable:", sys.executable)
-print("Notebook Python version:", sys.version)
-print("PWD:", os.getcwd())
-
-We’ll use that sys.executable to run the subprocess test so subprocess imports use the same interpreter/env as your notebook (avoids system vs conda mismatch).
+test_code = """\
+from src.models.video_model import DMC
+import inspect
+print("Imported DMC OK")
+print("DMC.__init__ sig=", inspect.signature(DMC.__init__))
+"""
+with open("test_import_dmc.py", "w") as f:
+    f.write(test_code)
+print("Wrote test_import_dmc.py")
 
 
 ---
 
-3) Subprocess import test (use the same interpreter)
+Cell 2 — run it with the same interpreter and PYTHONPATH
 
-Run this cell (shell via Python executable — safe):
-
-# replace {PY} with the printed sys.executable from step 2 if you prefer to type it;
-# below uses Python's f-string to call the same interpreter from the notebook.
 import sys, os
 py = sys.executable
-print("Running subprocess test with:", py)
-os.system(f'PYTHONPATH=$PWD "{py}" -c \"from src.models.video_model import DMC; import inspect; print(\\'Imported DMC OK\\'); print(\\'DMC.__init__ sig=\\', inspect.signature(DMC.__init__))\"')
-
-If it prints Imported DMC OK — great. If you still see ModuleNotFoundError, paste the full output here.
+print("Running subprocess with:", py)
+exit_code = os.system(f'PYTHONPATH=$PWD "{py}" test_import_dmc.py')
+print("Exit code:", exit_code)
 
 
 ---
 
-4) If import test succeeded — run training with the same interpreter and PYTHONPATH
-
-Use the same sys.executable so child process uses your conda environment where torch/cuda live:
+If it prints Imported DMC OK then the package import is working — at that point, you can re-run training using the same trick:
 
 import sys, os
 py = sys.executable
 print("Running training with:", py)
-os.system(f'PYTHONPATH=$PWD \"{py}\" training.py \
-  --train-glob \"data/frames/train/**/*.png\" \
-  --val-glob \"data/frames/val/**/*.png\" \
-  --patch-size 256 --temporal-len 4 --batch-size 6 \
-  --epochs 30 --cuda --amp \
-  --pretrained \"./checkpoints/cvpr2025_video.pth.tar\" \
-  --lambda-rd 0.01 \
-  --save-dir \"./checkpoints_finetune_lambda0.01\" \
-  --log-dir \"./logs/dcvc_finetune_lambda0.01\" \
-  --workers 4')
+os.system(f'PYTHONPATH=$PWD "{py}" training.py '
+          '--train-glob "data/frames/train/**/*.png" '
+          '--val-glob "data/frames/val/**/*.png" '
+          '--patch-size 256 --temporal-len 4 --batch-size 6 '
+          '--epochs 30 --cuda --amp '
+          '--pretrained "./checkpoints/cvpr2025_video.pth.tar" '
+          '--lambda-rd 0.01 '
+          '--save-dir "./checkpoints_finetune_lambda0.01" '
+          '--log-dir "./logs/dcvc_finetune_lambda0.01" '
+          '--workers 4')
 
-Run that in a notebook cell and paste any error output you get.
-
-
----
-
-Why this will work
-
-Creating __init__.py ensures Python treats src and src/models as importable packages in subprocesses.
-
-Running the child process with the same Python executable your notebook is using avoids differences between system Python and your conda env (this was likely the root cause earlier).
-
-
-
----
-
-If you still see errors afterward
-
-Paste the entire output of the subprocess (the traceback). If the failure occurs inside the model (e.g., on model.update() or MLCodec_extensions_cpp missing), I will immediately provide one of two fallback patches:
-
-Fallback A (recommended if C++ coder missing): train with MSE-only loss (skip entropy/bpp) so you can fine-tune the decoder now and add entropy/bitrate later.
-
-Fallback B: use internal decoder-only path (call module subcomponents) to approximate reconstructions and approximate bpp using tensor likelihood proxies.
-
-
-Tell me once the import test succeeded (or paste the failure). I’ll then either run the training or apply the safe fallback patch.
+If it fails again, paste the entire output here. That will tell us if the issue is import path or the missing C++ extensions (e.g. MLCodec_extensions_cpp).
 
