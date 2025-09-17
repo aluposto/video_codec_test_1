@@ -1,10 +1,13 @@
-!python training.py \
-  --train-glob "data/frames/train/**/*.png" \
-  --val-glob "data/frames/val/**/*.png" \
-  --patch-size 256 --temporal-len 4 --batch-size 6 \
-  --epochs 30 --cuda --amp \
-  --pretrained "./checkpoints/cvpr2025_video.pth.tar" \
-  --lambda-rd 0.01 \
-  --save-dir "./checkpoints_finetune_lambda0.01" \
-  --log-dir "./logs/dcvc_finetune_lambda0.01" \
-  --workers 4
+ERROR: failed to import VideoModel (DMC) from src.models.video_model
+Traceback (most recent call last):
+  File "/home/work/dcvc/DCVC/training.py", line 33, in <module>
+    from src.models.video_model import DMC as VideoModel
+ModuleNotFoundError: No module named 'src.models'
+Device: cuda
+Train frames: 610 Val frames: 610
+Traceback (most recent call last):
+  File "/home/work/dcvc/DCVC/training.py", line 290, in <module>
+    main()
+  File "/home/work/dcvc/DCVC/training.py", line 248, in main
+    raise RuntimeError("VideoModel import failed. Edit training.py to import the correct class from src.models.")
+RuntimeError: VideoModel import failed. Edit training.py to import the correct class from src.models.
