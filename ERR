@@ -1,55 +1,6 @@
-Notebook CWD: /home/work/dcvc/DCVC
-Files here:
-total 93
-drwxr-xr-x 2 work work  4096 Sep 17  2025  .
-drwxr-xr-x 2 work work  4096 Sep 16 21:41  ..
--rw-r--r-- 1 work work    85 Sep  8 19:08  .flake8
-drwxr-xr-x 2 work work  4096 Sep  8 19:08  .git
-drwxr-xr-x 2 work work  4096 Sep  8 19:08  .github
--rw-r--r-- 1 work work    61 Sep  8 19:08  .gitignore
-drwxr-xr-x 2 work work  4096 Sep 17 16:15  .ipynb_checkpoints
--rw-r--r-- 1 work work   444 Sep  8 19:08  CODE_OF_CONDUCT.md
--rw-r--r-- 1 work work   921 Sep  8 19:08  CONTRIBUTING.md
-drwxr-xr-x 2 work work  4096 Sep  8 19:08  DCVC-family
--rw-r--r-- 1 work work  1074 Sep  8 19:08  LICENSE.txt
--rw-r--r-- 1 work work 14429 Sep  8 19:08 'NOTICE .txt'
--rw-r--r-- 1 work work 15786 Sep  8 19:08  README.md
--rw-r--r-- 1 work work  2781 Sep  8 19:08  SECURITY.md
-drwxr-xr-x 2 work work  4096 Sep  9 15:17 'Untitled Folder'
-drwxr-xr-x 2 work work  4096 Sep  8 19:08  assets
--rw-r--r-- 1 work work   609 Sep  8 19:08  azure-pipelines.yml
-drwxr-xr-x 2 work work  4096 Sep  9 21:46  checkpoints
-drwxr-xr-x 2 work work  4096 Sep 17 16:11  data
--rw-r--r-- 1 work work  7333 Sep  8 19:08  dataset_config_example_yuv420.json
--rwxr-xr-x 1 work work   624 Sep 17 16:07  extract_frames.sh
-drwxr-xr-x 2 work work  4096 Sep  9 18:44  media
--rw-r--r-- 1 work work    62 Sep  8 19:08  requirements.txt
-drwxr-xr-x 2 work work  4096 Sep  8 19:08  src
--rw-r--r-- 1 work work  6097 Sep  8 19:08  test_conditions.md
--rw-r--r-- 1 work work   413 Sep 17  2025  test_import_subprocess.py
--rw-r--r-- 1 work work 20972 Sep  8 19:08  test_video.py
-drwxr-xr-x 2 work work  4096 Sep 16 18:30  tools
-drwxr-xr-x 2 work work  4096 Sep 16 20:16  train
--rw-r--r-- 1 work work 17972 Sep 17 17:04  training.py
--rw-r--r-- 1 work work   624 Sep 17 16:06  untitled.txt
--rw-r--r-- 1 work work     0 Sep 17 16:15  untitled1.txt
-
-Parent dir:
-total 291074
-drwxr-xr-x  2 work work      4096 Sep 16 21:41 .
-drwxr-xr-x 11 work work      4096 Sep 17 18:26 ..
-drwxr-xr-x  2 work work      4096 Sep 16 15:08 .ipynb_checkpoints
-drwxr-xr-x  2 work work      4096 Sep 17  2025 DCVC
--rw-r--r--  1 work work 162129736 Aug 26 06:03 Miniconda3-latest-Linux-x86_64.sh
--rw-r--r--  1 work work 135650334 Feb 14  2025 Miniconda3-py39_24.11.1-0-Linux-x86_64.sh
--rw-r--r--  1 work work     37306 Sep  8 21:54 Untitled.ipynb
--rw-r--r--  1 work work    135770 Sep  9 19:30 Untitled1.ipynb
--rw-r--r--  1 work work     31880 Sep 15 19:09 Untitled2.ipynb
--rw-r--r--  1 work work     68586 Sep 16 21:41 Untitled3.ipynb
--rwxr-xr-x  1 work work       188 Sep  8 19:03 add_jupyter_env.sh
-drwxr-xr-x  2 work work      4096 Sep  8 18:59 miniconda3
-
-Absolute path to potential 'src' locations:
-cwd/src exists: True
-cwd/../src exists: False
-cwd/../../src exists: False
+Child PYTHONPATH= /home/work/dcvc/DCVC
+sys.path[0:5]= ['', '/home/work/dcvc/DCVC', '/usr/lib/python310.zip', '/usr/lib/python3.10', '/usr/lib/python3.10/lib-dynload']
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+ModuleNotFoundError: No module named 'src.models'
+​
