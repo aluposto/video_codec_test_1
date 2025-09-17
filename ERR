@@ -1,4 +1,29 @@
-Cell In[40], line 6
-    os.system(f'PYTHONPATH=$PWD "{py}" -c \"from src.models.video_model import DMC; import inspect; print(\\'Imported DMC OK\\'); print(\\'DMC.__init__ sig=\\', inspect.signature(DMC.__init__))\"')
-              ^
-SyntaxError: invalid syntax. Perhaps you forgot a comma?
+Running training with: /home/work/dcvc/miniconda3/envs/dcvc_env/bin/python
+cannot import cuda implementation for inference, fallback to pytorch.
+Device: cuda
+Train frames: 610 Val frames: 610
+Loaded pretrained checkpoint: ./checkpoints/cvpr2025_video.pth.tar
+/home/work/dcvc/DCVC/training.py:396: FutureWarning: `torch.cuda.amp.GradScaler(args...)` is deprecated. Please use `torch.amp.GradScaler('cuda', args...)` instead.
+  scaler = GradScaler(enabled=args.amp)
+Warning: model.update() failed or is not needed.
+Warning: model.compress() failed during training wrapper: 'NoneType' object has no attribute 'reset'
+Warning: model.compress() failed during training wrapper: 'NoneType' object has no attribute 'reset'
+Warning: model.compress() failed during training wrapper: 'NoneType' object has no attribute 'reset'
+Warning: model.compress() failed during training wrapper: 'NoneType' object has no attribute 'reset'
+Traceback (most recent call last):
+  File "/home/work/dcvc/DCVC/training.py", line 421, in <module>
+    main()
+  File "/home/work/dcvc/DCVC/training.py", line 402, in main
+    train_loss, train_dist, train_bpp = run_epoch(model, train_loader, optimizer, scaler, device, args, epoch, is_train=True)
+                                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/work/dcvc/DCVC/training.py", line 318, in run_epoch
+    scaler.scale(loss).backward()
+  File "/home/work/dcvc/miniconda3/envs/dcvc_env/lib/python3.12/site-packages/torch/_tensor.py", line 647, in backward
+    torch.autograd.backward(
+  File "/home/work/dcvc/miniconda3/envs/dcvc_env/lib/python3.12/site-packages/torch/autograd/__init__.py", line 354, in backward
+    _engine_run_backward(
+  File "/home/work/dcvc/miniconda3/envs/dcvc_env/lib/python3.12/site-packages/torch/autograd/graph.py", line 829, in _engine_run_backward
+    return Variable._execution_engine.run_backward(  # Calls into the C++ engine to run the backward pass
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+RuntimeError: element 0 of tensors does not require grad and does not have a grad_fn
+256
