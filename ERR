@@ -1,208 +1,25 @@
-!sed -n '1,120p' training.py
-
-#!/usr/bin/env python3
-"""
-training.py - Training loop for DCVC-style models on pre-extracted frames.
-
-Usage (single GPU):
-  python training.py --train-glob "data/frames/train/**/*.png" --val-glob "data/frames/val/**/*.png" \
-    --patch-size 256 --temporal-len 4 --batch-size 6 --epochs 30 --cuda --amp \
-    --pretrained ./checkpoints/cvpr2025_video.pth.tar --lambda-rd 0.01 --save-dir ./checkpoints_finetune
-
-If your repo's VideoModel constructor signature differs, edit the import/constructor near top.
-"""
-import argparse, os, math, random, time
-from glob import glob
+# Patch training.py: make the VideoModel import print full traceback on failure
 from pathlib import Path
+import re, traceback
 
-import torch
-import torch.nn as nn
-from torch.utils.data import Dataset, DataLoader
-from torch.cuda.amp import GradScaler, autocast
+p = Path("training.py")
+txt = p.read_text()
 
-import numpy as np
-from PIL import Image
-
-# Try import model classes from repo - adapt if names differ
-try:
-    from src.models.video_model import DMC as VideoModel
-except Exception:
-    VideoModel = None
-
-# ----------------------------
-# Dataset - reads PNG frames list (flat) and samples temporal clips + random crop patches
-# ----------------------------
-class SequencePatchDataset(Dataset):
-    def __init__(self, file_list, seq_len=4, patch_size=256, augment=True):
-        """
-        file_list: sorted list of all frame file paths across videos
-        We treat file_list as a timeline; sampling is a sliding window with random start.
-        """
-        self.files = sorted(file_list)
-        self.seq_len = seq_len
-        self.patch_size = patch_size
-        self.augment = augment
-        if len(self.files) == 0:
-            raise ValueError("No frame files provided to SequencePatchDataset")
-
-    def __len__(self):
-        return max(1, len(self.files) // max(1, self.seq_len))
-
-    def _read_seq(self, start_idx):
-        idxs = [min(len(self.files)-1, start_idx + i) for i in range(self.seq_len)]
-        imgs = []
-        for i in idxs:
-            p = self.files[i]
-            im = Image.open(p).convert('RGB')
-            arr = np.asarray(im, dtype=np.float32) / 255.0
-            imgs.append(arr)
-        seq = np.stack(imgs, axis=0) # [T,H,W,3]
-        return seq
-
-    def __getitem__(self, idx):
-        max_start = max(0, len(self.files) - self.seq_len)
-        start = random.randint(0, max_start) if max_start > 0 else 0
-        seq = self._read_seq(start)  # [T,H,W,3]
-        T,H,W,C = seq.shape
-        ps = self.patch_size
-        if H < ps or W < ps:
-            # resize frames up if needed
-            from PIL import Image
-            seq = np.stack([np.asarray(Image.fromarray((f*255).astype(np.uint8)).resize((max(W,ps), max(H,ps))), dtype=np.float32)/255.0 for f in seq], axis=0)
-            T,H,W,C = seq.shape
-        x = random.randint(0, W-ps) if W > ps else 0
-        y = random.randint(0, H-ps) if H > ps else 0
-        seq = seq[:, y:y+ps, x:x+ps, :]  # [T,ps,ps,3]
-        if self.augment:
-            if random.random() < 0.5:
-                seq = seq[:, :, ::-1, :]
-            if random.random() < 0.5:
-                seq = seq[:, ::-1, :, :]
-        # to tensor [T,3,H,W]
-        seq = seq.transpose(0,3,1,2).copy()
-        seq = torch.from_numpy(seq).float()
-        return seq
-
-# ----------------------------
-# bpp helper
-# ----------------------------
-def compute_bpp_from_likelihoods(likelihoods, num_pixels):
-    if likelihoods is None:
-        return torch.tensor(0.0)
-    if isinstance(likelihoods, dict):
-        tensors = [v for v in likelihoods.values() if isinstance(v, torch.Tensor)]
-    elif isinstance(likelihoods, (list, tuple)):
-        tensors = [t for t in likelihoods if isinstance(t, torch.Tensor)]
-    elif isinstance(likelihoods, torch.Tensor):
-        tensors = [likelihoods]
-    else:
-        try:
-            return torch.tensor(float(likelihoods))
-        except Exception:
-            return torch.tensor(0.0)
-    total_bits = torch.tensor(0.0, device=tensors[0].device)
-    for t in tensors:
-        p = torch.clamp(t, min=1e-9)
-        total_bits = total_bits + (-torch.sum(torch.log(p)) / math.log(2.0))
-    bpp = total_bits / float(num_pixels)
-    return bpp
-
-# ----------------------------
-# training/validation epoch
-# ----------------------------
-def run_epoch(model, loader, optimizer, scaler, device, args, epoch, is_train=True):
-    model.train() if is_train else model.eval()
-    total_loss = 0.0
-    total_dist = 0.0
-    total_bpp = 0.0
-    steps = 0
-    startt = time.time()
-
-    for it, seq in enumerate(loader):
-        # seq: [B,T,3,H,W]
-
-!sed -n '200,280p' training.py
-
-
- parser.add_argument('--train-glob', type=str, required=True)
-    parser.add_argument('--val-glob', type=str, default='')
-    parser.add_argument('--patch-size', type=int, default=256)
-    parser.add_argument('--temporal-len', type=int, default=4)
-    parser.add_argument('--batch-size', type=int, default=6)
-    parser.add_argument('--epochs', type=int, default=30)
-    parser.add_argument('--lr', type=float, default=2e-4)
-    parser.add_argument('--weight-decay', type=float, default=1e-6)
-    parser.add_argument('--lambda-rd', type=float, default=0.01)
-    parser.add_argument('--pretrained', type=str, default='')
-    parser.add_argument('--save-dir', type=str, default='./checkpoints_finetune')
-    parser.add_argument('--log-dir', type=str, default='./logs')
-    parser.add_argument('--cuda', action='store_true')
-    parser.add_argument('--amp', action='store_true')
-    parser.add_argument('--workers', type=int, default=4)
-    parser.add_argument('--max-norm', type=float, default=1.0)
-    parser.add_argument('--log-interval', type=int, default=50)
-    args = parser.parse_args()
-
-    device = torch.device('cuda' if args.cuda and torch.cuda.is_available() else 'cpu')
-    print("Device:", device)
-
-    # load file lists
-    train_files = sorted(glob(args.train_glob, recursive=True))
-    val_files = sorted(glob(args.val_glob, recursive=True)) if args.val_glob else []
-    print("Train frames:", len(train_files), "Val frames:", len(val_files))
-
-    train_ds = SequencePatchDataset(train_files, seq_len=args.temporal_len, patch_size=args.patch_size, augment=True)
-    train_loader = DataLoader(train_ds, batch_size=args.batch_size, shuffle=True, num_workers=args.workers, pin_memory=True, drop_last=True)
-
-    val_loader = None
-    if len(val_files) > 0:
-        val_ds = SequencePatchDataset(val_files, seq_len=args.temporal_len, patch_size=args.patch_size, augment=False)
-        val_loader = DataLoader(val_ds, batch_size=max(1, args.batch_size//2), shuffle=False, num_workers=max(1,args.workers//2), pin_memory=True)
-
-    # instantiate model
-    if VideoModel is None:
-        raise RuntimeError("VideoModel import failed. Edit training.py to import the correct class from src.models.")
-    model = VideoModel()
-    model.to(device)
-
-    # load pretrained (optional)
-    if args.pretrained and os.path.exists(args.pretrained):
-        ck = torch.load(args.pretrained, map_location='cpu')
-        sd = ck.get('state_dict', ck)
-        try:
-            model.load_state_dict(sd, strict=False)
-            print("Loaded pretrained checkpoint:", args.pretrained)
-        except Exception as e:
-            print("Warning: load_state_dict strict failed:", e)
-            # try to load partial keys
-            model.load_state_dict({k.replace('module.',''):v for k,v in sd.items() if isinstance(v, torch.Tensor)}, strict=False)
-
-    optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
-    scaler = GradScaler(enabled=args.amp)
-
-    best_val = 1e9
-    os.makedirs(args.save_dir, exist_ok=True)
-
-    for epoch in range(args.epochs):
-        train_loss, train_dist, train_bpp = run_epoch(model, train_loader, optimizer, scaler, device, args, epoch, is_train=True)
-        if val_loader is not None:
-            val_loss, val_dist, val_bpp = run_epoch(model, val_loader, optimizer, scaler, device, args, epoch, is_train=False)
-            # save best
-            if val_loss < best_val:
-                best_val = val_loss
-                fn = os.path.join(args.save_dir, f"best_epoch{epoch:03d}.pth.tar")
-                torch.save({'epoch':epoch, 'state_dict': model.state_dict(), 'optimizer': optimizer.state_dict()}, fn)
-                print("Saved best checkpoint:", fn)
-
-        # periodic save
-        if (epoch + 1) % 5 == 0:
-            fn = os.path.join(args.save_dir, f"epoch{epoch:03d}.pth.tar")
-            torch.save({'epoch':epoch, 'state_dict': model.state_dict(), 'optimizer': optimizer.state_dict()}, fn)
-            print("Saved checkpoint:", fn)
-
-    print("Training finished.")
-
-if __name__ == "__main__":
-    main()
-​
-!sed -n '200,280p' training.py
+old_pattern = r"try:\s+from\s+src\.models\.video_model\s+import\s+[^\n]+\s+as\s+VideoModel\s+except\s+Exception:\s+VideoModel\s*=\s*None"
+if re.search(old_pattern, txt, flags=re.MULTILINE):
+    new_block = (
+        "try:\n"
+        "    from src.models.video_model import DMC as VideoModel\n"
+        "except Exception as e:\n"
+        "    import traceback\n"
+        "    print('ERROR: failed to import VideoModel (DMC) from src.models.video_model')\n"
+        "    traceback.print_exc()\n"
+        "    VideoModel = None\n"
+    )
+    txt2 = re.sub(old_pattern, new_block, txt, flags=re.MULTILINE)
+    p.write_text(txt2)
+    print("Patched training.py to print import errors. Showing top of file:\n")
+    print("\n".join(txt2.splitlines()[:80]))
+else:
+    print("Pattern not found — showing current top of training.py for inspection:\n")
+    print("\n".join(txt.splitlines()[:120]))
