@@ -1,10 +1,22 @@
-!chmod +x extract_frames.sh
-# create destination folder and run
-./extract_frames.sh data/train_videos/clip_01.mp4 data/frames/train/clip_01 60 1920 1080
+!python training.py \
+  --train-glob "data/frames/train/**/*.png" \
+  --val-glob "data/frames/val/**/*.png" \
+  --patch-size 256 --temporal-len 4 --batch-size 6 \
+  --epochs 30 --cuda --amp \
+  --pretrained "./checkpoints/cvpr2025_video.pth.tar" \
+  --lambda-rd 0.01 \
+  --save-dir "./checkpoints_finetune_lambda0.01" \
+  --log-dir "./logs/dcvc_finetune_lambda0.01" \
+  --workers 4
 
-gives output as 
 
-  Cell In[7], line 3
-    ./extract_frames.sh data/train_videos/clip_01.mp4 data/frames/train/clip_01 60 1920 1080
-    ^
-SyntaxError: invalid syntax
+gives output 
+
+Device: cuda
+Train frames: 610 Val frames: 610
+Traceback (most recent call last):
+  File "/home/work/dcvc/DCVC/training.py", line 279, in <module>
+    main()
+  File "/home/work/dcvc/DCVC/training.py", line 237, in main
+    raise RuntimeError("VideoModel import failed. Edit training.py to import the correct class from src.models.")
+RuntimeError: VideoModel import failed. Edit training.py to import the correct class from src.models.
