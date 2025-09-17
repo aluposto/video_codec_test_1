@@ -1,6 +1,5 @@
-# Run training and capture errors; if it fails, show traceback + key DMC class parts for debugging
-import subprocess, os, sys, time
-train_cmd = r'''python training.py \
+Running:
+ python training.py \
   --train-glob "data/frames/train/**/*.png" \
   --val-glob "data/frames/val/**/*.png" \
   --patch-size 256 --temporal-len 4 --batch-size 6 \
@@ -10,29 +9,211 @@ train_cmd = r'''python training.py \
   --save-dir "./checkpoints_finetune_lambda0.01" \
   --log-dir "./logs/dcvc_finetune_lambda0.01" \
   --workers 4
-'''
-print("Running:\n", train_cmd)
-proc = subprocess.Popen(train_cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True, bufsize=1)
 
-recent = []
-try:
-    for line in proc.stdout:
-        print(line, end="")
-        recent.append(line)
-        if len(recent) > 500:
-            recent.pop(0)
-except KeyboardInterrupt:
-    proc.kill()
-    print("\nUser interrupted training.")
-    raise
+Device: cuda
+Train frames: 610 Val frames: 610
+Traceback (most recent call last):
+  File "/home/work/dcvc/DCVC/training.py", line 279, in <module>
+    main()
+  File "/home/work/dcvc/DCVC/training.py", line 237, in main
+    raise RuntimeError("VideoModel import failed. Edit training.py to import the correct class from src.models.")
+RuntimeError: VideoModel import failed. Edit training.py to import the correct class from src.models.
 
-code = proc.wait()
-print("\nProcess exited with code", code)
-if code != 0:
-    print("\n--- Training failed. Showing recent output (last 300 lines) ---\n")
-    print("".join(recent[-300:]))
-    print("\n--- Now printing DMC class key sections (constructor, forward, compress) ---\n")
-    os.system("sed -n '200,420p' src/models/video_model.py")
-    print("\nPaste the traceback/recent output here and I'll provide the exact fix (constructor args, forward usage, etc.).")
-else:
-    print("Training started/exited with code 0 — monitor logs or TensorBoard.")
+Process exited with code 1
+
+--- Training failed. Showing recent output (last 300 lines) ---
+
+Device: cuda
+Train frames: 610 Val frames: 610
+Traceback (most recent call last):
+  File "/home/work/dcvc/DCVC/training.py", line 279, in <module>
+    main()
+  File "/home/work/dcvc/DCVC/training.py", line 237, in main
+    raise RuntimeError("VideoModel import failed. Edit training.py to import the correct class from src.models.")
+RuntimeError: VideoModel import failed. Edit training.py to import the correct class from src.models.
+
+
+--- Now printing DMC class key sections (constructor, forward, compress) ---
+
+        )
+
+    def forward(self, x):
+        return self.conv(x)
+
+
+class SpatialPrior(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.conv = nn.Sequential(
+            DepthConvBlock(g_ch_y * 4, g_ch_y * 3),
+            DepthConvBlock(g_ch_y * 3, g_ch_y * 3),
+            nn.Conv2d(g_ch_y * 3, g_ch_y * 2, 1),
+        )
+
+    def forward(self, x):
+        return self.conv(x)
+
+
+class RefFrame():
+    def __init__(self):
+        self.frame = None
+        self.feature = None
+        self.poc = None
+
+
+class DMC(CompressionModel):
+    def __init__(self):
+        super().__init__(z_channel=g_ch_z, extra_qp=extra_qp)
+        self.qp_shift = qp_shift
+
+        self.feature_adaptor_i = DepthConvBlock(g_ch_src_d, g_ch_d)
+        self.feature_adaptor_p = nn.Conv2d(g_ch_d, g_ch_d, 1)
+        self.feature_extractor = FeatureExtractor()
+
+        self.encoder = Encoder()
+        self.hyper_encoder = HyperEncoder()
+        self.hyper_decoder = HyperDecoder()
+        self.temporal_prior_encoder = ResidualBlockWithStride2(g_ch_d, g_ch_y * 2)
+        self.y_prior_fusion = PriorFusion()
+        self.y_spatial_prior = SpatialPrior()
+        self.decoder = Decoder()
+        self.recon_generation_net = ReconGeneration()
+
+        self.q_encoder = nn.Parameter(torch.ones((self.get_qp_num() + extra_qp, g_ch_d, 1, 1)))
+        self.q_decoder = nn.Parameter(torch.ones((self.get_qp_num() + extra_qp, g_ch_d, 1, 1)))
+        self.q_feature = nn.Parameter(torch.ones((self.get_qp_num() + extra_qp, g_ch_d, 1, 1)))
+        self.q_recon = nn.Parameter(torch.ones((self.get_qp_num() + extra_qp, g_ch_recon, 1, 1)))
+
+        self.dpb = []
+        self.max_dpb_size = 1
+        self.curr_poc = 0
+
+    def reset_ref_feature(self):
+        if len(self.dpb) > 0:
+            self.dpb[0].feature = None
+
+    def add_ref_frame(self, feature=None, frame=None, increase_poc=True):
+        ref_frame = RefFrame()
+        ref_frame.poc = self.curr_poc
+        ref_frame.frame = frame
+        ref_frame.feature = feature
+        if len(self.dpb) >= self.max_dpb_size:
+            self.dpb.pop(-1)
+        self.dpb.insert(0, ref_frame)
+        if increase_poc:
+            self.curr_poc += 1
+
+    def clear_dpb(self):
+        self.dpb.clear()
+
+    def set_curr_poc(self, poc):
+        self.curr_poc = poc
+
+    def apply_feature_adaptor(self):
+        if self.dpb[0].feature is None:
+            return self.feature_adaptor_i(F.pixel_unshuffle(self.dpb[0].frame, 8))
+        return self.feature_adaptor_p(self.dpb[0].feature)
+
+    def res_prior_param_decoder(self, z_hat, ctx_t):
+        hierarchical_params = self.hyper_decoder(z_hat)
+        temporal_params = self.temporal_prior_encoder(ctx_t)
+        _, _, H, W = temporal_params.shape
+        hierarchical_params = hierarchical_params[:, :, :H, :W].contiguous()
+        params = self.y_prior_fusion(
+            torch.cat((hierarchical_params, temporal_params), dim=1))
+        return params
+
+    def get_recon_and_feature(self, y_hat, ctx, q_decoder, q_recon):
+        feature = self.decoder(y_hat, ctx, q_decoder)
+        x_hat = self.recon_generation_net(feature, q_recon)
+        return x_hat, feature
+
+    def prepare_feature_adaptor_i(self, last_qp):
+        if self.dpb[0].frame is None:
+            q_recon = self.q_recon[last_qp:last_qp+1, :, :, :]
+            self.dpb[0].frame = self.recon_generation_net(self.dpb[0].feature, q_recon).clamp_(0, 1)
+            self.reset_ref_feature()
+
+    def compress(self, x, qp):
+        # pic_width and pic_height may be different from x's size. x here is after padding
+        # x_hat has the same size with x
+        device = x.device
+        q_encoder = self.q_encoder[qp:qp+1, :, :, :]
+        q_decoder = self.q_decoder[qp:qp+1, :, :, :]
+        q_feature = self.q_feature[qp:qp+1, :, :, :]
+
+        feature = self.apply_feature_adaptor()
+        ctx, ctx_t = self.feature_extractor(feature, q_feature)
+        y = self.encoder(x, ctx, q_encoder)
+
+        hyper_inp = self.pad_for_y(y)
+
+        z = self.hyper_encoder(hyper_inp)
+        z_hat, z_hat_write = round_and_to_int8(z)
+        cuda_event_z_ready = torch.cuda.Event()
+        cuda_event_z_ready.record()
+        params = self.res_prior_param_decoder(z_hat, ctx_t)
+        y_q_w_0, y_q_w_1, s_w_0, s_w_1, y_hat = \
+            self.compress_prior_2x(y, params, self.y_spatial_prior)
+
+        cuda_event_y_ready = torch.cuda.Event()
+        cuda_event_y_ready.record()
+        feature = self.decoder(y_hat, ctx, q_decoder)
+
+        cuda_stream = self.get_cuda_stream(device=device, priority=-1)
+        with torch.cuda.stream(cuda_stream):
+            self.entropy_coder.reset()
+            cuda_event_z_ready.wait()
+            self.bit_estimator_z.encode_z(z_hat_write, qp)
+            cuda_event_y_ready.wait()
+            self.gaussian_encoder.encode_y(y_q_w_0, s_w_0)
+            self.gaussian_encoder.encode_y(y_q_w_1, s_w_1)
+            self.entropy_coder.flush()
+
+        bit_stream = self.entropy_coder.get_encoded_stream()
+
+        torch.cuda.synchronize(device=device)
+        self.add_ref_frame(feature, None)
+        return {
+            'bit_stream': bit_stream,
+        }
+
+    def decompress(self, bit_stream, sps, qp):
+        dtype = next(self.parameters()).dtype
+        device = next(self.parameters()).device
+        q_decoder = self.q_decoder[qp:qp+1, :, :, :]
+        q_feature = self.q_feature[qp:qp+1, :, :, :]
+        q_recon = self.q_recon[qp:qp+1, :, :, :]
+
+        self.entropy_coder.set_use_two_entropy_coders(sps['ec_part'] == 1)
+        self.entropy_coder.set_stream(bit_stream)
+        z_size = self.get_downsampled_shape(sps['height'], sps['width'], 64)
+        self.bit_estimator_z.decode_z(z_size, qp)
+
+        feature = self.apply_feature_adaptor()
+        c1, ctx_t = self.feature_extractor.forward_part1(feature, q_feature)
+
+        z_hat = self.bit_estimator_z.get_z(z_size, device, dtype)
+        params = self.res_prior_param_decoder(z_hat, ctx_t)
+        infos = self.decompress_prior_2x_part1(params)
+
+        ctx = self.feature_extractor.forward_part2(c1)
+
+        cuda_stream = self.get_cuda_stream(device=device, priority=-1)
+        with torch.cuda.stream(cuda_stream):
+            y_hat = self.decompress_prior_2x_part2(params, self.y_spatial_prior, infos)
+            cuda_event = torch.cuda.Event()
+            cuda_event.record()
+
+        cuda_event.wait()
+        x_hat, feature = self.get_recon_and_feature(y_hat, ctx, q_decoder, q_recon)
+
+        self.add_ref_frame(feature, x_hat)
+        return {
+            'x_hat': x_hat,
+        }
+
+    def shift_qp(self, qp, fa_idx):
+        return qp + self.qp_shift[fa_idx]
+
+Paste the traceback/recent output here and I'll provide the exact fix (constructor args, forward usage, etc.).
