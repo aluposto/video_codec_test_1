@@ -1,48 +1,42 @@
-# Patch training.py so it imports DMC from src.models.video_model as VideoModel
-from pathlib import Path
-import re, sys
+# Run training and, if it fails, print traceback + show DMC class lines for quick patching
+import subprocess, sys, textwrap, os
 
-p = Path("training.py")
-if not p.exists():
-    print("ERROR: training.py not found in current directory:", Path.cwd())
-    raise SystemExit(1)
+train_cmd = r'''python training.py \
+  --train-glob "data/frames/train/**/*.png" \
+  --val-glob "data/frames/val/**/*.png" \
+  --patch-size 256 --temporal-len 4 --batch-size 6 \
+  --epochs 30 --cuda --amp \
+  --pretrained "./checkpoints/cvpr2025_video.pth.tar" \
+  --lambda-rd 0.01 \
+  --save-dir "./checkpoints_finetune_lambda0.01" \
+  --log-dir "./logs/dcvc_finetune_lambda0.01" \
+  --workers 4
+'''
 
-txt = p.read_text()
+print("Running training command...\n")
+proc = subprocess.Popen(train_cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True, bufsize=1)
 
-# Build the replacement block we want
-replacement = (
-    "try:\n"
-    "    from src.models.video_model import DMC as VideoModel\n"
-    "except Exception:\n"
-    "    VideoModel = None\n"
-)
+# Stream output; capture last 200 lines for debugging
+last_lines = []
+try:
+    for line in proc.stdout:
+        print(line, end="")
+        last_lines.append(line)
+        if len(last_lines) > 400:
+            last_lines.pop(0)
+except KeyboardInterrupt:
+    proc.kill()
+    print("\nTraining run interrupted by user.")
+    raise
 
-# 1) If the exact line already exists, report and show context
-if "from src.models.video_model import DMC as VideoModel" in txt:
-    print("training.py already contains the correct import. Showing top of file:\n")
-    print("\n".join(txt.splitlines()[:60]))
+ret = proc.wait()
+print("\nProcess exited with code", ret)
+
+if ret != 0:
+    print("\n--- Training failed. Showing recent output (last 200 lines) ---\n")
+    print("".join(last_lines[-200:]))
+    print("\n--- Now printing DMC class excerpt (src/models/video_model.py lines ~200-320) ---\n")
+    os.system("sed -n '200,320p' src/models/video_model.py")
+    print("\nPaste the traceback or the DMC excerpt here and I will provide the exact patch to construct the model correctly.")
 else:
-    # 2) Remove any existing 'from src.models.* import ... as VideoModel' block (naive but safe)
-    #    and insert our correct replacement near the top (after any initial docstring if present).
-    # remove lines that import VideoModel from src.models.*
-    txt2 = re.sub(r"try:\s*from\s+src\.models\.[^\n]+\s+import\s+[^\n]+\s+as\s+VideoModel\s*except\s+Exception:\s+VideoModel\s*=\s*None",
-                  "",
-                  txt, flags=re.MULTILINE)
-    txt2 = re.sub(r"from\s+src\.models\.[^\n]+\s+import\s+[^\n]+\s+as\s+VideoModel", "", txt2, flags=re.MULTILINE)
-
-    # Find insertion point: after initial docstring (if any), otherwise at top
-    insert_at = 0
-    if txt2.startswith('"""') or txt2.startswith("'''"):
-        # find closing docstring
-        delim = '"""' if txt2.startswith('"""') else "'''"
-        end = txt2.find(delim, len(delim))
-        if end != -1:
-            insert_at = end + len(delim)
-
-    # Insert replacement
-    txt3 = txt2[:insert_at] + "\n" + replacement + "\n" + txt2[insert_at:]
-
-    # Write back
-    p.write_text(txt3)
-    print("Patched training.py to import DMC as VideoModel. Showing top of file:\n")
-    print("\n".join(txt3.splitlines()[:80]))
+    print("Training finished (exit code 0).")
