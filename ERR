@@ -1,8 +1,6 @@
----------------------------------------------------------------------------
-NameError                                 Traceback (most recent call last)
-Cell In[29], line 15
-     13     print("IMPORT FAILED in subprocess. Full traceback:")
-     14     traceback.print_exc()
----> 15 PY
-
-NameError: name 'PY' is not defined
+Running test_import_subprocess.py with PYTHONPATH set to repo root...
+IMPORT FAILED in subprocess. Full traceback:
+Traceback (most recent call last):
+  File "/home/work/dcvc/DCVC/test_import_subprocess.py", line 4, in <module>
+    from src.models.video_model import DMC
+ModuleNotFoundError: No module named 'src.models'
