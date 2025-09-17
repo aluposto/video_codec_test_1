@@ -1,21 +1,101 @@
-# Run this in a notebook cell to capture the real import error
-import traceback, sys
-from pathlib import Path
+Thanks — that error shows the child process still can’t find the src package (ModuleNotFoundError: No module named 'src.models'). We’ve tried patching training.py to modify sys.path, but the safest, fastest fix is to set PYTHONPATH when launching the subprocess so Python can find the src package. I’ll give two quick, copy-pasteable notebook cells:
 
-print("CWD:", Path.cwd())
-print("Checking file exists:", Path("src/models/video_model.py").exists())
-print("First entries of sys.path:", sys.path[:8])
+1. a quick test to confirm src is importable when PYTHONPATH is set, and
 
+
+2. the training command run with PYTHONPATH=$PWD so the subprocess sees src.models.
+
+
+
+Run these cells (each in its own notebook cell) — they won’t change files, they just test & run.
+
+
+---
+
+1) Quick import test (run this first)
+
+This confirms the subprocess can import DMC when we set PYTHONPATH:
+
+# Notebook cell - test subprocess import with PYTHONPATH
+!PYTHONPATH=$PWD python - <<'PY'
+import traceback
 try:
     from src.models.video_model import DMC
-    print("SUCCESS: imported DMC class:", DMC)
+    print("SUCCESS: subprocess can import src.models.video_model.DMC")
     import inspect
-    sig = None
     try:
-        sig = inspect.signature(DMC.__init__)
-    except Exception:
-        sig = "no signature available"
-    print("DMC.__init__ signature:", sig)
-except Exception as e:
-    print("IMPORT FAILED:")
+        print("DMC.__init__ signature:", inspect.signature(DMC.__init__))
+    except Exception as e:
+        print("Could not get signature:", e)
+except Exception:
+    print("IMPORT FAILED in subprocess. Full traceback:")
     traceback.print_exc()
+PY
+
+If you see SUCCESS: subprocess can import ... we’re good to run training with PYTHONPATH set.
+
+
+---
+
+2) Run training with PYTHONPATH set (single GPU)
+
+Copy-paste this into a new notebook cell and run it — it launches training exactly like before but ensures the repo root is on the Python import path for the child process:
+
+# Notebook cell - run training with PYTHONPATH explicitly set
+!PYTHONPATH=$PWD python training.py \
+  --train-glob "data/frames/train/**/*.png" \
+  --val-glob "data/frames/val/**/*.png" \
+  --patch-size 256 --temporal-len 4 --batch-size 6 \
+  --epochs 30 --cuda --amp \
+  --pretrained "./checkpoints/cvpr2025_video.pth.tar" \
+  --lambda-rd 0.01 \
+  --save-dir "./checkpoints_finetune_lambda0.01" \
+  --log-dir "./logs/dcvc_finetune_lambda0.01" \
+  --workers 4
+
+
+---
+
+Why this works
+
+ModuleNotFoundError: No module named 'src.models' happens because the child process has a different sys.path (doesn’t include the repo root). Setting PYTHONPATH=$PWD (repo root) ensures Python will find the src package when the child process runs.
+
+
+
+---
+
+If that still errors
+
+If you still get an import error, run the test cell below and paste the full output here — I’ll diagnose immediately.
+
+# Notebook cell - verbose debug: print sys.path in subprocess and try import
+!PYTHONPATH=$PWD python - <<'PY'
+import sys, traceback, os
+print("PWD:", os.getcwd())
+print("PYTHONPATH seen by child:", os.environ.get("PYTHONPATH"))
+print("sys.path (first 8 entries):", sys.path[:8])
+try:
+    from src.models.video_model import DMC
+    print("Imported DMC ok")
+except Exception:
+    print("Import failed; traceback:")
+    traceback.print_exc()
+PY
+
+
+---
+
+If you prefer a permanent fix inside training.py
+
+I can also make the import robust by inserting these two lines at the very top of training.py before any imports:
+
+import sys, os
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+But since we already tried patching training.py earlier and the child process still failed, using PYTHONPATH at launch is the most reliable immediate fix.
+
+
+---
+
+Run the quick import test cell now and paste the result if it fails. If it succeeds, run the training cell and paste any traceback if something else goes wrong (e.g., errors from model.compress()); I’ll help the next step immediately.
+
