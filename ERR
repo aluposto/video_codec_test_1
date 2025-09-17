@@ -1,22 +1,11 @@
-!python training.py \
-  --train-glob "data/frames/train/**/*.png" \
-  --val-glob "data/frames/val/**/*.png" \
-  --patch-size 256 --temporal-len 4 --batch-size 6 \
-  --epochs 30 --cuda --amp \
-  --pretrained "./checkpoints/cvpr2025_video.pth.tar" \
-  --lambda-rd 0.01 \
-  --save-dir "./checkpoints_finetune_lambda0.01" \
-  --log-dir "./logs/dcvc_finetune_lambda0.01" \
-  --workers 4
+!ls -la src/models
 
-
-gives output 
-
-Device: cuda
-Train frames: 610 Val frames: 610
-Traceback (most recent call last):
-  File "/home/work/dcvc/DCVC/training.py", line 279, in <module>
-    main()
-  File "/home/work/dcvc/DCVC/training.py", line 237, in main
-    raise RuntimeError("VideoModel import failed. Edit training.py to import the correct class from src.models.")
-RuntimeError: VideoModel import failed. Edit training.py to import the correct class from src.models.
+total 48
+drwxr-xr-x 2 work work  4096 Sep  9 21:56 .
+drwxr-xr-x 2 work work  4096 Sep  8 19:08 ..
+drwxr-xr-x 2 work work  4096 Sep  9 21:56 .ipynb_checkpoints
+drwxr-xr-x 2 work work  4096 Sep  9 21:31 __pycache__
+-rw-r--r-- 1 work work 13211 Sep  8 19:08 common_model.py
+-rw-r--r-- 1 work work 13366 Sep  8 19:08 entropy_models.py
+-rw-r--r-- 1 work work  7864 Sep  8 19:08 image_model.py
+-rw-r--r-- 1 work work 13075 Sep  8 19:08 video_model.py
