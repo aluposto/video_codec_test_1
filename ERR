@@ -1,6 +1,38 @@
-CWD: /home/work/dcvc/DCVC
-Exists: True
-sys.path[:6]: ['', '/home/work/.local/lib/python3.10/site-packages', '/home/work', '/home/work/dcvc/miniconda3/envs/dcvc_env/lib/python312.zip', '/home/work/dcvc/miniconda3/envs/dcvc_env/lib/python3.12', '/home/work/dcvc/miniconda3/envs/dcvc_env/lib/python3.12/lib-dynload']
-------------------------------------------------------------
-SUCCESS: imported DMC -> <class 'src.models.video_model.DMC'>
-DMC.__init__ signature: (self)
+# Run training and capture errors; if it fails, show traceback + key DMC class parts for debugging
+import subprocess, os, sys, time
+train_cmd = r'''python training.py \
+  --train-glob "data/frames/train/**/*.png" \
+  --val-glob "data/frames/val/**/*.png" \
+  --patch-size 256 --temporal-len 4 --batch-size 6 \
+  --epochs 30 --cuda --amp \
+  --pretrained "./checkpoints/cvpr2025_video.pth.tar" \
+  --lambda-rd 0.01 \
+  --save-dir "./checkpoints_finetune_lambda0.01" \
+  --log-dir "./logs/dcvc_finetune_lambda0.01" \
+  --workers 4
+'''
+print("Running:\n", train_cmd)
+proc = subprocess.Popen(train_cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True, bufsize=1)
+
+recent = []
+try:
+    for line in proc.stdout:
+        print(line, end="")
+        recent.append(line)
+        if len(recent) > 500:
+            recent.pop(0)
+except KeyboardInterrupt:
+    proc.kill()
+    print("\nUser interrupted training.")
+    raise
+
+code = proc.wait()
+print("\nProcess exited with code", code)
+if code != 0:
+    print("\n--- Training failed. Showing recent output (last 300 lines) ---\n")
+    print("".join(recent[-300:]))
+    print("\n--- Now printing DMC class key sections (constructor, forward, compress) ---\n")
+    os.system("sed -n '200,420p' src/models/video_model.py")
+    print("\nPaste the traceback/recent output here and I'll provide the exact fix (constructor args, forward usage, etc.).")
+else:
+    print("Training started/exited with code 0 — monitor logs or TensorBoard.")
