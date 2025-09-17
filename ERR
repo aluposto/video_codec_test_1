@@ -1,20 +1,116 @@
-!python training.py \
-  --train-glob "data/frames/train/**/*.png" \
-  --val-glob "data/frames/val/**/*.png" \
-  --patch-size 256 --temporal-len 4 --batch-size 6 \
-  --epochs 30 --cuda --amp \
-  --pretrained "./checkpoints/cvpr2025_video.pth.tar" \
-  --lambda-rd 0.01 \
-  --save-dir "./checkpoints_finetune_lambda0.01" \
-  --log-dir "./logs/dcvc_finetune_lambda0.01" \
-  --workers 4
+# Patch training.py so it imports DMC from src.models.video_model as VideoModel
+from pathlib import Path
+import re, sys
+
+p = Path("training.py")
+if not p.exists():
+    print("ERROR: training.py not found in current directory:", Path.cwd())
+    raise SystemExit(1)
+
+txt = p.read_text()
+
+# Build the replacement block we want
+replacement = (
+    "try:\n"
+    "    from src.models.video_model import DMC as VideoModel\n"
+    "except Exception:\n"
+    "    VideoModel = None\n"
+)
+
+# 1) If the exact line already exists, report and show context
+if "from src.models.video_model import DMC as VideoModel" in txt:
+    print("training.py already contains the correct import. Showing top of file:\n")
+    print("\n".join(txt.splitlines()[:60]))
+else:
+    # 2) Remove any existing 'from src.models.* import ... as VideoModel' block (naive but safe)
+    #    and insert our correct replacement near the top (after any initial docstring if present).
+    # remove lines that import VideoModel from src.models.*
+    txt2 = re.sub(r"try:\s*from\s+src\.models\.[^\n]+\s+import\s+[^\n]+\s+as\s+VideoModel\s*except\s+Exception:\s+VideoModel\s*=\s*None",
+                  "",
+                  txt, flags=re.MULTILINE)
+    txt2 = re.sub(r"from\s+src\.models\.[^\n]+\s+import\s+[^\n]+\s+as\s+VideoModel", "", txt2, flags=re.MULTILINE)
+
+    # Find insertion point: after initial docstring (if any), otherwise at top
+    insert_at = 0
+    if txt2.startswith('"""') or txt2.startswith("'''"):
+        # find closing docstring
+        delim = '"""' if txt2.startswith('"""') else "'''"
+        end = txt2.find(delim, len(delim))
+        if end != -1:
+            insert_at = end + len(delim)
+
+    # Insert replacement
+    txt3 = txt2[:insert_at] + "\n" + replacement + "\n" + txt2[insert_at:]
+
+    # Write back
+    p.write_text(txt3)
+    print("Patched training.py to import DMC as VideoModel. Showing top of file:\n")
+    print("\n".join(txt3.splitlines()[:80]))
 
 
-Device: cuda
-Train frames: 610 Val frames: 610
-Traceback (most recent call last):
-  File "/home/work/dcvc/DCVC/training.py", line 279, in <module>
-    main()
-  File "/home/work/dcvc/DCVC/training.py", line 237, in main
-    raise RuntimeError("VideoModel import failed. Edit training.py to import the correct class from src.models.")
-RuntimeError: VideoModel import failed. Edit training.py to import the correct class from src.models.
+
+
+
+
+training.py already contains the correct import. Showing top of file:
+
+#!/usr/bin/env python3
+"""
+training.py - Training loop for DCVC-style models on pre-extracted frames.
+
+Usage (single GPU):
+  python training.py --train-glob "data/frames/train/**/*.png" --val-glob "data/frames/val/**/*.png" \
+    --patch-size 256 --temporal-len 4 --batch-size 6 --epochs 30 --cuda --amp \
+    --pretrained ./checkpoints/cvpr2025_video.pth.tar --lambda-rd 0.01 --save-dir ./checkpoints_finetune
+
+If your repo's VideoModel constructor signature differs, edit the import/constructor near top.
+"""
+import argparse, os, math, random, time
+from glob import glob
+from pathlib import Path
+
+import torch
+import torch.nn as nn
+from torch.utils.data import Dataset, DataLoader
+from torch.cuda.amp import GradScaler, autocast
+
+import numpy as np
+from PIL import Image
+
+# Try import model classes from repo - adapt if names differ
+try:
+    from src.models.video_model import DMC as VideoModel
+except Exception:
+    VideoModel = None
+
+# ----------------------------
+# Dataset - reads PNG frames list (flat) and samples temporal clips + random crop patches
+# ----------------------------
+class SequencePatchDataset(Dataset):
+    def __init__(self, file_list, seq_len=4, patch_size=256, augment=True):
+        """
+        file_list: sorted list of all frame file paths across videos
+        We treat file_list as a timeline; sampling is a sliding window with random start.
+        """
+        self.files = sorted(file_list)
+        self.seq_len = seq_len
+        self.patch_size = patch_size
+        self.augment = augment
+        if len(self.files) == 0:
+            raise ValueError("No frame files provided to SequencePatchDataset")
+
+    def __len__(self):
+        return max(1, len(self.files) // max(1, self.seq_len))
+
+    def _read_seq(self, start_idx):
+        idxs = [min(len(self.files)-1, start_idx + i) for i in range(self.seq_len)]
+        imgs = []
+        for i in idxs:
+            p = self.files[i]
+            im = Image.open(p).convert('RGB')
+            arr = np.asarray(im, dtype=np.float32) / 255.0
+            imgs.append(arr)
+        seq = np.stack(imgs, axis=0) # [T,H,W,3]
+        return seq
+
+    def __getitem__(self, idx):
