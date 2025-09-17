@@ -1,6 +1,68 @@
-# Cell A: write a small Python script, then run it with PYTHONPATH set
-test_code = r'''
-import traceback
+Good — this is a classic PYTHONPATH / working-directory mismatch. The subprocess still can't find src.models because Python isn't looking in the directory that contains the src package. Let's fix it step-by-step with short commands you can paste into notebook cells.
+
+I'll (A) help you discover exactly where src/ lives relative to the notebook/process, then (B) show the exact PYTHONPATH you must use and re-run the import test and training.
+
+Run each of the cells below (one cell at a time) — they are safe and only print diagnostics or re-run the import test with correctly targeted PYTHONPATH.
+
+
+---
+
+A — Diagnose file locations (run these two cells)
+
+Cell 1 — show current working directory and list top-level files:
+
+# Notebook cell: check working dir and list files
+import os, sys
+print("Notebook CWD:", os.getcwd())
+print("Files here:")
+!ls -la
+print("\nParent dir:")
+!ls -la ..
+print("\nAbsolute path to potential 'src' locations:")
+print("cwd/src exists:", os.path.exists(os.path.join(os.getcwd(), "src")))
+print("cwd/../src exists:", os.path.exists(os.path.join(os.getcwd(), "..", "src")))
+print("cwd/../../src exists:", os.path.exists(os.path.join(os.getcwd(), "..", "..", "src")))
+
+Paste the output here if you want me to read it — but usually one of these src paths will be True. We need to know which absolute directory actually contains the src package.
+
+Cell 2 — print the absolute path of your src file (if any):
+
+# Notebook cell: find src path quickly
+import os, glob
+candidates = [
+    os.path.join(os.getcwd(), "src"),
+    os.path.join(os.getcwd(), "..", "src"),
+    os.path.join(os.getcwd(), "..", "..", "src"),
+    os.path.join(os.getcwd(), "../..", "src"),
+]
+for c in candidates:
+    print(c, "->", os.path.exists(c))
+# Also print absolute path of the video_model file if present
+paths = glob.glob("**/src/models/video_model.py", recursive=True)
+print("Matches for '**/src/models/video_model.py':", paths[:10])
+if len(paths) > 0:
+    import os
+    print("Absolute file path:", os.path.abspath(paths[0]))
+
+This tells us the directory that must be added to PYTHONPATH. (Most likely it will show something like /home/work/dcvc/src or /home/work/dcvc/DCVC/src.)
+
+
+---
+
+B — Try the subprocess import test using the correct PYTHONPATH
+
+If the src folder is at /home/work/dcvc/src, you must set PYTHONPATH=/home/work/dcvc (i.e., the directory that contains src). Below I show two safe variants — one uses $(dirname "$PWD") (parent of current), one uses PWD directly if src is inside the CWD.
+
+First try parent-dir PYTHONPATH (this often fixes cases where you are in a subfolder like DCVC/):
+
+# Notebook cell: try import using parent directory as PYTHONPATH
+import os
+print("Trying PYTHONPATH = parent directory of cwd:", os.path.dirname(os.getcwd()))
+!PYTHONPATH=$(dirname $PWD) python - <<'PY'
+import traceback, os, sys
+print("child PWD:", os.getcwd())
+print("child PYTHONPATH:", os.environ.get("PYTHONPATH"))
+print("sys.path[:6]:", sys.path[:6])
 try:
     from src.models.video_model import DMC
     print("SUCCESS: subprocess can import src.models.video_model.DMC")
@@ -12,10 +74,85 @@ try:
 except Exception:
     print("IMPORT FAILED in subprocess. Full traceback:")
     traceback.print_exc()
-'''
-open("test_import_subprocess.py", "w").write(test_code)
+PY
 
-# Run it in a subprocess with PYTHONPATH set so the child process can import `src`
+If that works, great — use the same prefix when running training (see step C).
+
+If it still fails, try setting PYTHONPATH to the current working directory (if src is directly inside CWD):
+
+# Notebook cell: try import using current working directory as PYTHONPATH
 import os
-print("Running test_import_subprocess.py with PYTHONPATH set to repo root...")
-!PYTHONPATH=$PWD python test_import_subprocess.py
+print("Trying PYTHONPATH = cwd:", os.getcwd())
+!PYTHONPATH=$PWD python - <<'PY'
+import traceback, os, sys
+print("child PWD:", os.getcwd())
+print("child PYTHONPATH:", os.environ.get("PYTHONPATH"))
+print("sys.path[:6]:", sys.path[:6])
+try:
+    from src.models.video_model import DMC
+    print("SUCCESS: subprocess can import src.models.video_model.DMC")
+    import inspect
+    try:
+        print("DMC.__init__ signature:", inspect.signature(DMC.__init__))
+    except Exception as e:
+        print("Could not get signature:", e)
+except Exception:
+    print("IMPORT FAILED in subprocess. Full traceback:")
+    traceback.print_exc()
+PY
+
+If neither works, copy the outputs of the diagnostic cells (A) here and I’ll tell you exactly which absolute path to use.
+
+
+---
+
+C — If the import test succeeds — run training with correct PYTHONPATH
+
+If the previous import test succeeded with PYTHONPATH=$(dirname $PWD), run training like this (paste into a notebook cell):
+
+# Run training using parent directory as PYTHONPATH
+!PYTHONPATH=$(dirname $PWD) python training.py \
+  --train-glob "data/frames/train/**/*.png" \
+  --val-glob "data/frames/val/**/*.png" \
+  --patch-size 256 --temporal-len 4 --batch-size 6 \
+  --epochs 30 --cuda --amp \
+  --pretrained "./checkpoints/cvpr2025_video.pth.tar" \
+  --lambda-rd 0.01 \
+  --save-dir "./checkpoints_finetune_lambda0.01" \
+  --log-dir "./logs/dcvc_finetune_lambda0.01" \
+  --workers 4
+
+If the import test succeeded only with PYTHONPATH=$PWD, use that instead:
+
+# Run training using cwd as PYTHONPATH
+!PYTHONPATH=$PWD python training.py \
+  --train-glob "data/frames/train/**/*.png" \
+  --val-glob "data/frames/val/**/*.png" \
+  --patch-size 256 --temporal-len 4 --batch-size 6 \
+  --epochs 30 --cuda --amp \
+  --pretrained "./checkpoints/cvpr2025_video.pth.tar" \
+  --lambda-rd 0.01 \
+  --save-dir "./checkpoints_finetune_lambda0.01" \
+  --log-dir "./logs/dcvc_finetune_lambda0.01" \
+  --workers 4
+
+
+---
+
+Why this fixes it
+
+Python imports src.models... by looking for a directory on sys.path that contains src (i.e., .../src). So you must set PYTHONPATH to the directory that contains src (not to src itself). If your src folder is one level up from your current notebook folder (common when the repo root is ..), PYTHONPATH=$(dirname $PWD) is the correct value.
+
+
+
+---
+
+Run the diagnostic cells in section A and B and paste back either:
+
+the success message from the import test (so I can tell you to run training), or
+
+the outputs of those cells (so I can point to the exact absolute path to use).
+
+
+I’ll wait for the outputs and then give the next precise command.
+
