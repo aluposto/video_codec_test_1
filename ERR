@@ -1,14 +1,20 @@
-!grep -n "class" src/models/video_model.py || true
+!python training.py \
+  --train-glob "data/frames/train/**/*.png" \
+  --val-glob "data/frames/val/**/*.png" \
+  --patch-size 256 --temporal-len 4 --batch-size 6 \
+  --epochs 30 --cuda --amp \
+  --pretrained "./checkpoints/cvpr2025_video.pth.tar" \
+  --lambda-rd 0.01 \
+  --save-dir "./checkpoints_finetune_lambda0.01" \
+  --log-dir "./logs/dcvc_finetune_lambda0.01" \
+  --workers 4
 
 
-
-25:class FeatureExtractor(nn.Module):
-54:class Encoder(nn.Module):
-100:class Decoder(nn.Module):
-132:class ReconGeneration(nn.Module):
-166:class HyperEncoder(nn.Module):
-179:class HyperDecoder(nn.Module):
-192:class PriorFusion(nn.Module):
-206:class SpatialPrior(nn.Module):
-219:class RefFrame():
-226:class DMC(CompressionModel):
+Device: cuda
+Train frames: 610 Val frames: 610
+Traceback (most recent call last):
+  File "/home/work/dcvc/DCVC/training.py", line 279, in <module>
+    main()
+  File "/home/work/dcvc/DCVC/training.py", line 237, in main
+    raise RuntimeError("VideoModel import failed. Edit training.py to import the correct class from src.models.")
+RuntimeError: VideoModel import failed. Edit training.py to import the correct class from src.models.
