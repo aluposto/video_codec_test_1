@@ -1,11 +1,20 @@
-# in a notebook cell:
-!PYTHONPATH=$PWD python training.py \
-  --train-glob "data/frames/train/**/*.png" \
-  --val-glob "data/frames/val/**/*.png" \
-  --patch-size 256 --temporal-len 4 --batch-size 6 \
-  --epochs 30 --cuda --amp \
-  --pretrained "./checkpoints/cvpr2025_video.pth.tar" \
-  --lambda-rd 0.01 \
-  --save-dir "./checkpoints_finetune_lambda0.01" \
-  --log-dir "./logs/dcvc_finetune_lambda0.01" \
-  --workers 4
+cannot import cuda implementation for inference, fallback to pytorch.
+Device: cuda
+Train frames: 610 Val frames: 610
+Loaded pretrained checkpoint: ./checkpoints/cvpr2025_video.pth.tar
+Train Epoch 0 it 0/25 loss=0.002608 dist=0.002608 bpp=0.000000
+Train Epoch 0 finished: avg_loss=0.000403 avg_dist=0.000403 avg_bpp=0.000000 throughput_steps_per_sec=1.97
+Val Epoch 0 finished: avg_loss=0.000139 avg_dist=0.000139 avg_bpp=0.000000 throughput_steps_per_sec=3.60
+Saved best checkpoint: ./checkpoints_finetune_lambda0.01/best_epoch000.pth.tar
+Train Epoch 1 it 0/25 loss=0.000111 dist=0.000111 bpp=0.000000
+Train Epoch 1 finished: avg_loss=0.000107 avg_dist=0.000107 avg_bpp=0.000000 throughput_steps_per_sec=2.86
+Val Epoch 1 finished: avg_loss=0.000099 avg_dist=0.000099 avg_bpp=0.000000 throughput_steps_per_sec=3.87
+Saved best checkpoint: ./checkpoints_finetune_lambda0.01/best_epoch001.pth.tar
+Train Epoch 2 it 0/25 loss=0.000129 dist=0.000129 bpp=0.000000
+Train Epoch 2 finished: avg_loss=0.000076 avg_dist=0.000076 avg_bpp=0.000000 throughput_steps_per_sec=2.90
+Val Epoch 2 finished: avg_loss=0.000072 avg_dist=0.000072 avg_bpp=0.000000 throughput_steps_per_sec=3.84
+Saved best checkpoint: ./checkpoints_finetune_lambda0.01/best_epoch002.pth.tar
+Train Epoch 3 it 0/25 loss=0.000099 dist=0.000099 bpp=0.000000
+Train Epoch 3 finished: avg_loss=0.000058 avg_dist=0.000058 avg_bpp=0.000000 throughput_steps_per_sec=2.87
+Val Epoch 3 finished: avg_loss=0.000056 avg_dist=0.000056 avg_bpp=0.000000 throughput_steps_per_sec=3.96
+Saved best checkpoint: ./checkpoints_finetune_lambda0.01/best_epoch003.pth.tar
