@@ -1,25 +1,10 @@
-# Patch training.py: make the VideoModel import print full traceback on failure
-from pathlib import Path
-import re, traceback
-
-p = Path("training.py")
-txt = p.read_text()
-
-old_pattern = r"try:\s+from\s+src\.models\.video_model\s+import\s+[^\n]+\s+as\s+VideoModel\s+except\s+Exception:\s+VideoModel\s*=\s*None"
-if re.search(old_pattern, txt, flags=re.MULTILINE):
-    new_block = (
-        "try:\n"
-        "    from src.models.video_model import DMC as VideoModel\n"
-        "except Exception as e:\n"
-        "    import traceback\n"
-        "    print('ERROR: failed to import VideoModel (DMC) from src.models.video_model')\n"
-        "    traceback.print_exc()\n"
-        "    VideoModel = None\n"
-    )
-    txt2 = re.sub(old_pattern, new_block, txt, flags=re.MULTILINE)
-    p.write_text(txt2)
-    print("Patched training.py to print import errors. Showing top of file:\n")
-    print("\n".join(txt2.splitlines()[:80]))
-else:
-    print("Pattern not found — showing current top of training.py for inspection:\n")
-    print("\n".join(txt.splitlines()[:120]))
+!python training.py \
+  --train-glob "data/frames/train/**/*.png" \
+  --val-glob "data/frames/val/**/*.png" \
+  --patch-size 256 --temporal-len 4 --batch-size 6 \
+  --epochs 30 --cuda --amp \
+  --pretrained "./checkpoints/cvpr2025_video.pth.tar" \
+  --lambda-rd 0.01 \
+  --save-dir "./checkpoints_finetune_lambda0.01" \
+  --log-dir "./logs/dcvc_finetune_lambda0.01" \
+  --workers 4
