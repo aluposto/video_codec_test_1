@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+# training.py - Training loop for DCVC-style models on pre-extracted frames.
 
 import sys, os
 # ensure repo root is on PYTHONPATH so 'src' package can be imported when running as a script
@@ -5,17 +7,13 @@ repo_root = os.path.dirname(os.path.abspath(__file__))
 if repo_root not in sys.path:
     sys.path.insert(0, repo_root)
 
-#!/usr/bin/env python3
 """
-training.py - Training loop for DCVC-style models on pre-extracted frames.
-
 Usage (single GPU):
   python training.py --train-glob "data/frames/train/**/*.png" --val-glob "data/frames/val/**/*.png" \
     --patch-size 256 --temporal-len 4 --batch-size 6 --epochs 30 --cuda --amp \
     --pretrained ./checkpoints/cvpr2025_video.pth.tar --lambda-rd 0.01 --save-dir ./checkpoints_finetune
-
-If your repo's VideoModel constructor signature differs, edit the import/constructor near top.
 """
+
 import argparse, os, math, random, time
 from glob import glob
 from pathlib import Path
@@ -31,125 +29,236 @@ from PIL import Image
 # Try import model classes from repo - adapt if names differ
 try:
     from src.models.video_model import DMC as VideoModel
-except Exception as e:
-    # compress failed; warn and fallback to a differentiable decoder path that uses model parameters
-    print("Warning: model.compress() failed during training wrapper:", e)
+except Exception:
+    VideoModel = None
+
+# ----------------------------
+# Dataset - reads PNG frames list (flat) and samples temporal clips + random crop patches
+# ----------------------------
+class SequencePatchDataset(Dataset):
+    def __init__(self, file_list, seq_len=4, patch_size=256, augment=True):
+        """
+        file_list: sorted list of all frame file paths across videos (treated as timeline)
+        """
+        self.files = sorted(file_list)
+        self.seq_len = seq_len
+        self.patch_size = patch_size
+        self.augment = augment
+        if len(self.files) == 0:
+            raise ValueError("No frame files provided to SequencePatchDataset")
+
+    def __len__(self):
+        # number of clips (simple heuristic)
+        return max(1, len(self.files) // max(1, self.seq_len))
+
+    def _read_seq(self, start_idx):
+        idxs = [min(len(self.files)-1, start_idx + i) for i in range(self.seq_len)]
+        imgs = []
+        for i in idxs:
+            p = self.files[i]
+            im = Image.open(p).convert('RGB')
+            arr = np.asarray(im, dtype=np.float32) / 255.0
+            imgs.append(arr)
+        seq = np.stack(imgs, axis=0) # [T,H,W,3]
+        return seq
+
+    def __getitem__(self, idx):
+        max_start = max(0, len(self.files) - self.seq_len)
+        start = random.randint(0, max_start) if max_start > 0 else 0
+        seq = self._read_seq(start)  # [T,H,W,3]
+        T,H,W,C = seq.shape
+        ps = self.patch_size
+        if H < ps or W < ps:
+            # resize up if needed
+            from PIL import Image
+            seq = np.stack([np.asarray(Image.fromarray((f*255).astype(np.uint8)).resize((max(W,ps), max(H,ps))), dtype=np.float32)/255.0 for f in seq], axis=0)
+            T,H,W,C = seq.shape
+        x = random.randint(0, W-ps) if W > ps else 0
+        y = random.randint(0, H-ps) if H > ps else 0
+        seq = seq[:, y:y+ps, x:x+ps, :]  # [T,ps,ps,3]
+        if self.augment:
+            if random.random() < 0.5:
+                seq = seq[:, :, ::-1, :]
+            if random.random() < 0.5:
+                seq = seq[:, ::-1, :, :]
+        # to tensor [T,3,H,W]
+        seq = seq.transpose(0,3,1,2).copy()
+        seq = torch.from_numpy(seq).float()
+        return seq
+
+# ----------------------------
+# bpp helper
+# ----------------------------
+def compute_bpp_from_likelihoods(likelihoods, num_pixels):
+    if likelihoods is None:
+        return torch.tensor(0.0)
+    if isinstance(likelihoods, dict):
+        tensors = [v for v in likelihoods.values() if isinstance(v, torch.Tensor)]
+    elif isinstance(likelihoods, (list, tuple)):
+        tensors = [t for t in likelihoods if isinstance(t, torch.Tensor)]
+    elif isinstance(likelihoods, torch.Tensor):
+        tensors = [likelihoods]
+    else:
+        try:
+            return torch.tensor(float(likelihoods))
+        except Exception:
+            return torch.tensor(0.0)
+    total_bits = torch.tensor(0.0, device=tensors[0].device)
+    for t in tensors:
+        p = torch.clamp(t, min=1e-9)
+        total_bits = total_bits + (-torch.sum(torch.log(p)) / math.log(2.0))
+    bpp = total_bits / float(num_pixels)
+    return bpp
+
+# ----------------------------
+# Helper: encode/decode wrapper for video models
+# ----------------------------
+def encode_decode_sequence(model, seq, qp=0):
+    """
+    seq: [B,T,C,H,W] torch tensor on correct device
+    Returns dict: {'x_hat': [B,T,C,H,W] tensor, 'likelihoods': None, 'bpp_tensor': scalar-tensor}
+    """
+    import torch
+    import torch.nn.functional as F
+
+    device = seq.device
+    B, T, C, H, W = seq.shape
+
+    # initialize entropy coder etc (best-effort)
     try:
-        # Do NOT use torch.no_grad() here — we need gradients
-        import torch.nn.functional as F
-        x = seq[:,0]  # first frame in sequence
-        # fallback path: try to run encoder/decoder directly
-        q_enc = model.q_encoder[0:1] if hasattr(model,"q_encoder") else None
-        q_dec = model.q_decoder[0:1] if hasattr(model,"q_decoder") else None
-        q_recon = model.q_recon[0:1] if hasattr(model,"q_recon") else None
-        # feature adaptor
-        feat_in = F.pixel_unshuffle(x,8)
-        if hasattr(model,"feature_adaptor_i"):
-            feature = model.feature_adaptor_i(feat_in)
-        else:
-            feature = feat_in
-        ctx, ctx_t = (None,None)
-        if hasattr(model,"feature_extractor"):
-            qf = model.q_feature[0:1] if hasattr(model,"q_feature") else None
+        model.update()
+    except Exception:
+        # update may fail if compiled coder missing; continue
+        pass
+
+    # clear and initialize dpb
+    try:
+        if hasattr(model, "clear_dpb"):
+            model.clear_dpb()
+    except Exception:
+        pass
+
+    # create an initial reference frame (zeros) to avoid None access
+    try:
+        zeros = torch.zeros((B, C, H, W), device=device, dtype=seq.dtype)
+        if hasattr(model, "add_ref_frame"):
             try:
-                ctx, ctx_t = model.feature_extractor(feature, qf)
-            except Exception:
-                pass
-        # encoder -> y
-        if hasattr(model,"encoder"):
-            y = model.encoder(x, ctx if ctx is not None else feature, q_enc)
-        else:
-            y = feature
-        # decoder -> recon
-        if hasattr(model,"decoder") and hasattr(model,"recon_generation_net"):
-            feature_dec = model.decoder(y, ctx if ctx is not None else feature, q_dec)
-            x_hat = model.recon_generation_net(feature_dec, q_recon).clamp_(0,1)
-        else:
-            x_hat = x
-    except Exception as e2:
-        print("Warning: differentiable fallback also failed:", e2)
-        x_hat = x
-    bits = 0
+                model.add_ref_frame(feature=None, frame=zeros, increase_poc=False)
+            except TypeError:
+                try:
+                    model.add_ref_frame(frame=zeros, increase_poc=False)
+                except Exception:
+                    model.dpb = []
+                    model.add_ref_frame(frame=zeros, increase_poc=False)
+    except Exception:
+        pass
+
+    total_bits = 0
     x_hat_list = []
+
     for t in range(T):
         x = seq[:, t]  # [B,C,H,W]
 
-        # compress -> returns dict with 'bit_stream' or other keys
+        # attempt to compress => decompress pipeline (preferred)
+        out = None
         try:
             out = model.compress(x, qp)
-        except Exception as e:
-            # compress failed; warn and fallback to identity recon
-            print("Warning: model.compress() failed during training wrapper:", e)
-            # fallback: run model's internal decoder if available, else use input as reconstruction
+        except Exception:
+            out = None
+
+        if out is None:
+            # differentiable fallback using encoder/decoder submodules
             try:
-                # try to call decoder modules directly (best-effort)
-                with torch.no_grad():
-                    # Call encoder+decoder path when available (best-effort)
-                    feature = model.apply_feature_adaptor() if hasattr(model, "apply_feature_adaptor") else None
-                    ctx, ctx_t = model.feature_extractor(feature, model.q_feature[0:1]) if hasattr(model, "feature_extractor") else (None, None)
-                    y = model.encoder(x, ctx, model.q_encoder[0:1]) if hasattr(model, "encoder") else None
-                    # try to run hyper/hyper_decoder and decoder path to get y_hat
-                    y_hat = y
-                    if hasattr(model, "decoder") and y_hat is not None:
-                        # try best-effort decode
-                        x_hat, _feat = model.get_recon_and_feature(y_hat, ctx, model.q_decoder[0:1], model.q_recon[0:1])
-                    else:
-                        x_hat = x
+                feat_in = F.pixel_unshuffle(x, 8) if hasattr(F, "pixel_unshuffle") else x
+                if hasattr(model, "feature_adaptor_i"):
+                    try:
+                        feature = model.feature_adaptor_i(feat_in)
+                    except Exception:
+                        feature = feat_in
+                else:
+                    feature = feat_in
+
+                ctx, ctx_t = (None, None)
+                if hasattr(model, "feature_extractor"):
+                    try:
+                        qf = model.q_feature[0:1] if hasattr(model, "q_feature") else None
+                        ctx, ctx_t = model.feature_extractor(feature, qf)
+                    except Exception:
+                        ctx, ctx_t = (None, None)
+
+                y = None
+                if hasattr(model, "encoder"):
+                    try:
+                        q_enc = model.q_encoder[0:1] if hasattr(model, "q_encoder") else None
+                        y = model.encoder(x, ctx if ctx is not None else feature, q_enc)
+                    except Exception:
+                        y = None
+
+                x_hat = x
+                if y is not None and hasattr(model, "decoder") and hasattr(model, "recon_generation_net"):
+                    try:
+                        q_dec = model.q_decoder[0:1] if hasattr(model, "q_decoder") else None
+                        q_recon = model.q_recon[0:1] if hasattr(model, "q_recon") else None
+                        feature_dec = model.decoder(y, ctx if ctx is not None else feature, q_dec)
+                        x_hat = model.recon_generation_net(feature_dec, q_recon).clamp_(0, 1)
+                    except Exception:
+                        try:
+                            q_dec = model.q_decoder[0:1] if hasattr(model, "q_decoder") else None
+                            q_recon = model.q_recon[0:1] if hasattr(model, "q_recon") else None
+                            x_hat, _feat = model.get_recon_and_feature(y, ctx if ctx is not None else feature, q_dec, q_recon)
+                            x_hat = x_hat.clamp_(0,1)
+                        except Exception:
+                            x_hat = x
                 bits = 0
             except Exception:
                 x_hat = x
                 bits = 0
-            x_hat_list.append(x_hat.unsqueeze(1))
-            total_bits += bits
-            continue
-
-        # get bit stream bytes (may be None)
-        bs = out.get("bit_stream", None)
-        # if compress returned x_hat directly (some image models do), pick it
-        x_hat = out.get("x_hat", None)
-        if bs is None:
-            # No bitstream; maybe single-frame image model returned x_hat; handle it
-            if x_hat is None:
-                # fallback: use identity
-                x_hat = x
-                bits = 0
-            else:
-                bits = 0
         else:
-            # bs may be bytes or bytearray
-            if isinstance(bs, (bytes, bytearray)):
-                bits = len(bs) * 8
-            elif hasattr(bs, "__len__"):
-                try:
-                    bits = len(bs) * 8
-                except Exception:
+            bs = out.get("bit_stream", None)
+            x_hat = out.get("x_hat", None)
+            bits = 0
+            if bs is None:
+                if x_hat is None:
+                    x_hat = x
+                    bits = 0
+                else:
                     bits = 0
             else:
-                bits = 0
+                try:
+                    if isinstance(bs, (bytes, bytearray)):
+                        bits = len(bs) * 8
+                    elif hasattr(bs, "__len__"):
+                        bits = len(bs) * 8
+                    else:
+                        bits = 0
+                except Exception:
+                    bits = 0
+                try:
+                    sps = {'height': H, 'width': W, 'ec_part': 0}
+                    dec = model.decompress(bs, sps, qp)
+                    x_hat = dec.get('x_hat', x)
+                except Exception:
+                    x_hat = x
 
-            # decompress to get reconstruction
-            try:
-                sps = {'height': H, 'width': W, 'ec_part': 0}
-                dec = model.decompress(bs, sps, qp)
-                x_hat = dec.get('x_hat', x)
-            except Exception as e:
-                # decompress failed, fallback to input
-                print("Warning: model.decompress() failed inside training wrapper:", e)
-                x_hat = x
+        # ensure x_hat has shape [B,C,H,W]
+        if isinstance(x_hat, torch.Tensor):
+            if x_hat.dim() == 5 and x_hat.shape[1] == 1:
+                x_hat = x_hat[:,0]
+        else:
+            x_hat = x
 
         x_hat_list.append(x_hat.unsqueeze(1))
-        total_bits += bits
+        total_bits += int(bits)
 
     x_hat_seq = torch.cat(x_hat_list, dim=1) if len(x_hat_list) > 0 else seq
-    # normalize bpp per-frame with same denom used elsewhere in training.py (num_pixels = B*H*W)
     denom = float(B * H * W) if (B * H * W) > 0 else 1.0
     bpp_val = float(total_bits) / denom
-    # return bpp as a scalar tensor on device
     bpp_tensor = torch.tensor(bpp_val, device=device, dtype=torch.float32)
     return {'x_hat': x_hat_seq, 'likelihoods': None, 'bpp_tensor': bpp_tensor}
 
-
-
+# ----------------------------
+# training/validation epoch
+# ----------------------------
 def run_epoch(model, loader, optimizer, scaler, device, args, epoch, is_train=True):
     model.train() if is_train else model.eval()
     total_loss = 0.0
@@ -158,13 +267,13 @@ def run_epoch(model, loader, optimizer, scaler, device, args, epoch, is_train=Tr
     steps = 0
     startt = time.time()
 
-    use_video_api = hasattr(model, "compress") and hasattr(model, "decompress")
-
     for it, seq in enumerate(loader):
         # seq: [B,T,3,H,W]
         seq = seq.to(device, non_blocking=True)
         B,T,C,H,W = seq.shape
         num_pixels = B * H * W  # normalized per-frame; keep same denom as previous code
+
+        use_video_api = hasattr(model, "compress") and hasattr(model, "decompress")
 
         # run model: if video API available use encode/decode wrapper, else call model(seq)
         if use_video_api:
@@ -173,11 +282,10 @@ def run_epoch(model, loader, optimizer, scaler, device, args, epoch, is_train=Tr
             likelihoods = out.get('likelihoods', None)
             # bpp tensor provided directly by wrapper
             bpp = out.get('bpp_tensor', torch.tensor(0.0, device=device))
-            # ensure shapes align: x_hat [B,T,C,H,W]
         else:
             try:
                 with autocast(enabled=args.amp):
-                    out = model(seq)
+                    out = model(seq)  # many image models implement __call__ to return recon or dict
             except Exception:
                 # fallback: try to run per-frame image model
                 flat = seq.view(B*T, C, H, W)
@@ -197,7 +305,7 @@ def run_epoch(model, loader, optimizer, scaler, device, args, epoch, is_train=Tr
                     x_hat = seq.clone()
                 bpp = torch.tensor(0.0, device=device)
 
-        # if not set yet (video wrapper set it), and out is dict from model
+        # if not set yet (non-video path) and out is dict
         if not use_video_api:
             if isinstance(out, dict):
                 x_hat = out.get('x_hat') or out.get('recon') or out.get('x_rec')
@@ -210,7 +318,7 @@ def run_epoch(model, loader, optimizer, scaler, device, args, epoch, is_train=Tr
                 # ensure we have x_hat
                 x_hat = seq.clone()
 
-            if 'bpp_tensor' in out:
+            if isinstance(out, dict) and 'bpp_tensor' in out:
                 bpp = out['bpp_tensor']
             else:
                 # compute bpp from likelihoods if available
@@ -250,6 +358,9 @@ def run_epoch(model, loader, optimizer, scaler, device, args, epoch, is_train=Tr
     print(f"{'Train' if is_train else 'Val'} Epoch {epoch} finished: avg_loss={avg_loss:.6f} avg_dist={avg_dist:.6f} avg_bpp={avg_bpp:.6f} throughput_steps_per_sec={steps/max(1e-6,elapsed):.2f}")
     return avg_loss, avg_dist, avg_bpp
 
+# ----------------------------
+# main
+# ----------------------------
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--train-glob', type=str, required=True)
