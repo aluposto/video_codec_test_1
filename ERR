@@ -1,32 +1,27 @@
-(dcvc_rt_env) work@main1[YygELffK-session]:~/dcvc/DCVC/src/cpp$ python -m pip install . 2>&1 | tee ../../install_cpp.log
-Looking in indexes: https://pypi.org/simple, https://pypi.ngc.nvidia.com
-Processing /home/work/dcvc/DCVC/src/cpp
-  Preparing metadata (setup.py): started
-  Preparing metadata (setup.py): finished with status 'error'
-  error: subprocess-exited-with-error
-  
-  × python setup.py egg_info did not run successfully.
-  │ exit code: 1
-  ╰─> [12 lines of output]
-      /home/work/dcvc/miniconda3/envs/dcvc_rt_env/lib/python3.12/site-packages/_distutils_hack/__init__.py:53: UserWarning: Reliance on distutils from stdlib is deprecated. Users must rely on setuptools to provide the distutils module. Avoid importing distutils or import setuptools first, and avoid setting SETUPTOOLS_USE_DISTUTILS=stdlib. Register concerns at https://github.com/pypa/setuptools/issues/new?template=distutils-deprecation.yml
-        warnings.warn(
-      ERROR: Can not execute `setup.py` since setuptools failed to import in the build environment with exception:
-      Traceback (most recent call last):
-        File "<pip-setuptools-caller>", line 14, in <module>
-        File "/home/work/dcvc/miniconda3/envs/dcvc_rt_env/lib/python3.12/site-packages/setuptools/__init__.py", line 24, in <module>
-          from . import logging, monkey
-        File "/home/work/dcvc/miniconda3/envs/dcvc_rt_env/lib/python3.12/site-packages/setuptools/logging.py", line 5, in <module>
-          from . import monkey
-        File "/home/work/dcvc/miniconda3/envs/dcvc_rt_env/lib/python3.12/site-packages/setuptools/monkey.py", line 13, in <module>
-          import distutils.filelist
-      ModuleNotFoundError: No module named 'distutils'
-      [end of output]
-  
-  note: This error originates from a subprocess, and is likely not a problem with pip.
-error: metadata-generation-failed
+(dcvc_rt_env) work@main1[YygELffK-session]:~/dcvc/DCVC/src/cpp$ conda install -y -c conda-forge python-distutils setuptools pip wheel build
+Channels:
+ - conda-forge
+ - defaults
+Platform: linux-64
+Collecting package metadata (repodata.json): done
+Solving environment: | warning  libmamba Added empty dependency for problem type SOLVER_RULE_UPDATE
+failed
 
-× Encountered error while generating package metadata.
-╰─> See above for output.
+LibMambaUnsatisfiableError: Encountered problems while solving:
+  - nothing provides requested python-distutils
+  - package build-0.10.0-py310h06a4308_0 requires python >=3.10,<3.11.0a0, but none of the providers can be installed
 
-note: This is an issue with the package mentioned above, not pip.
-hint: See above for details.
+Could not solve for environment specs
+The following packages are incompatible
+├─ build is installable with the potential options
+│  ├─ build 0.10.0 would require
+│  │  └─ python >=3.10,<3.11.0a0 , which can be installed;
+│  ├─ build 0.10.0 would require
+│  │  └─ python >=3.11,<3.12.0a0 , which can be installed;
+│  ├─ build 0.10.0 would require
+│  │  └─ python >=3.8,<3.9.0a0 , which can be installed;
+│  └─ build 0.10.0 would require
+│     └─ python >=3.9,<3.10.0a0 , which can be installed;
+├─ pin-1 is not installable because it requires
+│  └─ python 3.12.* , which conflicts with any installable versions previously reported;
+└─ python-distutils does not exist (perhaps a typo or a missing channel).
