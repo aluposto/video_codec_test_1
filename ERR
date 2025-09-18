@@ -1,27 +1,26 @@
-(dcvc_rt_env) work@main1[YygELffK-session]:~/dcvc/DCVC/src/cpp$ conda install -y -c conda-forge python-distutils setuptools pip wheel build
-Channels:
- - conda-forge
- - defaults
-Platform: linux-64
-Collecting package metadata (repodata.json): done
-Solving environment: | warning  libmamba Added empty dependency for problem type SOLVER_RULE_UPDATE
-failed
-
-LibMambaUnsatisfiableError: Encountered problems while solving:
-  - nothing provides requested python-distutils
-  - package build-0.10.0-py310h06a4308_0 requires python >=3.10,<3.11.0a0, but none of the providers can be installed
-
-Could not solve for environment specs
-The following packages are incompatible
-├─ build is installable with the potential options
-│  ├─ build 0.10.0 would require
-│  │  └─ python >=3.10,<3.11.0a0 , which can be installed;
-│  ├─ build 0.10.0 would require
-│  │  └─ python >=3.11,<3.12.0a0 , which can be installed;
-│  ├─ build 0.10.0 would require
-│  │  └─ python >=3.8,<3.9.0a0 , which can be installed;
-│  └─ build 0.10.0 would require
-│     └─ python >=3.9,<3.10.0a0 , which can be installed;
-├─ pin-1 is not installable because it requires
-│  └─ python 3.12.* , which conflicts with any installable versions previously reported;
-└─ python-distutils does not exist (perhaps a typo or a missing channel).
+(dcvc_rt_env) work@main1[YygELffK-session]:~/dcvc/DCVC/src/cpp$ python -m pip install --upgrade pip setuptools wheel build
+Looking in indexes: https://pypi.org/simple, https://pypi.ngc.nvidia.com
+Requirement already satisfied: pip in /home/work/dcvc/miniconda3/envs/dcvc_rt_env/lib/python3.12/site-packages (25.2)
+Requirement already satisfied: setuptools in /home/work/dcvc/miniconda3/envs/dcvc_rt_env/lib/python3.12/site-packages (78.1.1)
+Collecting setuptools
+  Downloading setuptools-80.9.0-py3-none-any.whl.metadata (6.6 kB)
+Requirement already satisfied: wheel in /home/work/dcvc/miniconda3/envs/dcvc_rt_env/lib/python3.12/site-packages (0.45.1)
+Collecting build
+  Downloading build-1.3.0-py3-none-any.whl.metadata (5.6 kB)
+Requirement already satisfied: packaging>=19.1 in /home/work/dcvc/miniconda3/envs/dcvc_rt_env/lib/python3.12/site-packages (from build) (25.0)
+Collecting pyproject_hooks (from build)
+  Downloading pyproject_hooks-1.2.0-py3-none-any.whl.metadata (1.3 kB)
+Downloading setuptools-80.9.0-py3-none-any.whl (1.2 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 1.2/1.2 MB 26.0 MB/s  0:00:00
+Downloading build-1.3.0-py3-none-any.whl (23 kB)
+Downloading pyproject_hooks-1.2.0-py3-none-any.whl (10 kB)
+Installing collected packages: setuptools, pyproject_hooks, build
+  Attempting uninstall: setuptools
+    Found existing installation: setuptools 78.1.1
+    Uninstalling setuptools-78.1.1:
+      Successfully uninstalled setuptools-78.1.1
+Successfully installed build-1.3.0 pyproject_hooks-1.2.0 setuptools-80.9.0
+(dcvc_rt_env) work@main1[YygELffK-session]:~/dcvc/DCVC/src/cpp$ python -m pip install distutils
+Looking in indexes: https://pypi.org/simple, https://pypi.ngc.nvidia.com
+ERROR: Could not find a version that satisfies the requirement distutils (from versions: none)
+ERROR: No matching distribution found for distutils
