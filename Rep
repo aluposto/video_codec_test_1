@@ -1,111 +1,266 @@
-Thanks — that conda solver error is expected: python-distutils isn’t available for your Python 3.12 env on conda-forge and the build package variant the solver found requires a Python version constraint that conflicts with 3.12. In short: the easiest reliable fixes are (A) try a pip-based workaround that supplies distutils at runtime, or (B) create a Python 3.11 conda environment (recommended for building scientific/CUDA packages). I’ll give both options with exact terminal commands — run whichever you prefer.
+Great — we’ll go step-by-step. I’ll give a single, easy-to-follow recipe you can run interactively. It:
+
+clones the Microsoft DCVC repo into a fresh directory you choose,
+
+adds a PEP-517 pyproject.toml so pip will build in an isolated environment (this avoids the Python-3.12 distutils problem),
+
+replaces the src/cpp/setup.py with a safe, robust build script tuned to the pyrans pybind11 sources you showed,
+
+installs compilers into your conda env (no sudo),
+
+builds & installs the C++ pybind11 extension, and
+
+verifies the import.
+
+
+Run each numbered step in a terminal. Stop and paste the outputs here if anything fails and I’ll diagnose.
 
 
 ---
 
-Option A — Quick pip workaround (try this first)
+0) Pick a new local folder name
 
-This attempts to install missing build tooling via pip (no sudo). It often works and is fastest.
+Choose a folder name for the fresh clone, e.g. DCVC_fresh. I’ll use that in the example commands; replace it if you prefer.
 
-Run these in your terminal inside dcvc_rt_env:
 
-# 1. upgrade pip/setuptools/wheel
+---
+
+1) Clone the repo (fresh copy)
+
+# replace NEW_DIR with your chosen name
+NEW_DIR="DCVC_fresh"
+git clone https://github.com/microsoft/DCVC.git "$NEW_DIR"
+cd "$NEW_DIR"
+git checkout main
+pwd   # confirm you're in ~/path/to/DCVC_fresh
+
+
+---
+
+2) Add pyproject.toml at the repo root (PEP 517)
+
+This makes pip create an isolated build environment that provides pybind11 and modern setuptools during build — solves the distutils metadata problem.
+
+cat > pyproject.toml <<'PYPROJ'
+[build-system]
+requires = [
+  "setuptools>=61",
+  "wheel",
+  "pybind11>=2.6"
+]
+build-backend = "setuptools.build_meta"
+PYPROJ
+
+# quick check
+ls -l pyproject.toml
+
+
+---
+
+3) Replace the C++ build script with a defensive setup.py
+
+Your repo’s C++ pybind11 sources live under src/cpp/pyrans. Create a robust src/cpp/setup.py (this avoids importing pybind11 at metadata time and uses -std=c++17):
+
+cat > src/cpp/setup.py <<'PYSETUP'
+from setuptools import setup, Extension
+from setuptools.command.build_ext import build_ext as _build_ext
+import glob
+import sys
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+
+if __name__ == "__main__":
+    if sys.platform == "win32":
+        extra_compile_args = ['/std:c++17', '/O2', '/W4', '/WX', '/wd4100']
+        extra_link_args = []
+    else:
+        # NOTE: removed -Werror to avoid build failure on warnings
+        extra_compile_args = ['-std=c++17', '-O3', '-fPIC', '-Wall', '-Wextra']
+        extra_link_args = []
+
+    class build_ext(_build_ext):
+        def finalize_options(self):
+            super().finalize_options()
+            try:
+                import pybind11
+                inc = pybind11.get_include()
+                if inc not in self.include_dirs:
+                    self.include_dirs.append(inc)
+            except Exception:
+                # pybind11 will be provided by pyproject build env; if missing, build will fail with a clear error.
+                pass
+
+    # Collect .cpp sources under pyrans/
+    sources = glob.glob(str(HERE / 'pyrans' / '*.cpp'))
+    if not sources:
+        raise SystemExit("No source files found under src/cpp/pyrans/*.cpp — run this script from src/cpp/")
+
+    ext = Extension(
+        name='MLCodec_extensions_cpp',   # must match PYBIND11_MODULE name
+        sources=sources,
+        include_dirs=[],                 # pybind11 include appended in build_ext
+        extra_compile_args=extra_compile_args,
+        extra_link_args=extra_link_args,
+        language='c++'
+    )
+
+    setup(
+        name="MLCodec_extensions_cpp",
+        ext_modules=[ext],
+        cmdclass={"build_ext": build_ext},
+        zip_safe=False,
+        python_requires=">=3.12",
+    )
+PYSETUP
+
+# verify
+ls -l src/cpp/setup.py
+
+> Why replace the original? your original setup.py imported pybind11 helpers at top-level and used py_rans/*.cpp (a different path). This safe version:
+
+collects pyrans/*.cpp (matches your files),
+
+defers pybind11 discovery to build time,
+
+uses -std=c++17 like the original,
+
+drops -Werror (avoids failing builds on harmless warnings).
+
+
+
+
+
+---
+
+4) Activate your Python environment (must be python 3.12)
+
+You said you already have dcvc_rt_env. Activate it now:
+
+conda activate dcvc_rt_env
+python --version   # must show 3.12.x
+which python       # should point inside your conda env
+
+If you don't have that env yet, create it (but you said you do). If conda isn't found in your terminal, let me know and I’ll give micromamba instructions.
+
+
+---
+
+5) Install compilers & build tools into the env (no sudo)
+
+conda install -y -c conda-forge cmake ninja gxx_linux-64 || true
+# optional: install pybind11 in the env for convenience (PEP-517 will provide it anyway)
+conda install -y -c conda-forge pybind11 || python -m pip install pybind11 || true
+
+# verify tools
+cmake --version || true
+g++ --version || true
+ninja --version || true
+
+
+---
+
+6) Upgrade packaging/build tooling
+
 python -m pip install --upgrade pip setuptools wheel build
 
-# 2. install a distutils shim (this package is a lightweight shim that can fix missing distutils)
-# Note: if this package is not present or fails, we'll fall back to Option B below.
-python -m pip install distutils
 
-# 3. confirm distutils import works
-python -c "import importlib,sys; importlib.import_module('distutils'); print('distutils OK')"
+---
 
-# 4. retry building the C++ package
-cd ~/dcvc/DCVC/src/cpp
-python -m pip install . 2>&1 | tee ../../install_cpp.log
+7) Build & install the C++ extension (from src/cpp)
 
-If the python -c "import distutils" line prints distutils OK and the pip install . in step 4 proceeds, great — continue with the repo's next install step:
+Run the build and capture the log (so we can inspect failures if any):
 
-cd ../layers/extensions/inference
-python -m pip install . 2>&1 | tee ../../../install_inference.log
+cd src/cpp
+python -m pip install . 2>&1 | tee ../../install_cpp_build.log
 
-If distutils pip install fails or pip install . still errors out with distutils-related problems, proceed to Option B.
+Expect pip to create an isolated build env (because of pyproject.toml) that contains pybind11 and setuptools for the build.
 
 
 ---
 
-Option B — Create a fresh Python 3.11 conda env (recommended, most reliable)
+8) Quick import smoke test (same env)
 
-Many build toolchains and CUDA/PyTorch wheels are still most reliable on Python 3.11. Creating a new env avoids the conda solver conflict you hit.
+If the install succeeded, test importing the module:
 
-Run these commands in a terminal (they don’t require sudo):
-
-# 1) create a new env with python 3.11 and compilers
-conda create -y -n dcvc_rt_py311 -c conda-forge python=3.11 cmake ninja gxx_linux-64 pip
-
-# 2) activate it
-conda activate dcvc_rt_py311
-
-# 3) install PyTorch (choose the wheel matching your CUDA — you earlier used cu126; adapt if necessary)
-# Example for CUDA 12.6 (if available)
-python -m pip install --index-url https://download.pytorch.org/whl/cu126 torch torchvision torchaudio
-
-# If you only need CPU, use:
-# python -m pip install --index-url https://download.pytorch.org/whl/cpu torch torchvision torchaudio
-
-# 4) from repo root, install python requirements
-pip install -r requirements.txt
-
-# 5) build/install the C++/CUDA pieces
-cd src/cpp
-python -m pip install . 2>&1 | tee ../../install_cpp_py311.log
-
-cd ../layers/extensions/inference
-python -m pip install . 2>&1 | tee ../../../install_inference_py311.log
-
-After this, verify imports:
-
-# verify compiled artifacts and imports
 python - <<'PY'
-import glob, importlib
-print('so files:', glob.glob('**/*.so', recursive=True)[:20])
+import importlib, sys
 try:
-    import src.layers.cuda_inference as ci
-    print('import ok:', ci)
+    m = importlib.import_module("MLCodec_extensions_cpp")
+    print("Loaded:", m)
+    print("RansEncoder:", hasattr(m, "RansEncoder"))
+    print("RansDecoder:", hasattr(m, "RansDecoder"))
 except Exception as e:
-    print('import error:', e)
+    print("Import failed:", e)
+    raise
 PY
 
-If that succeeds, run your test_video.py as before.
+If that prints the module and class availability, you’re good — the C++ bitstream code is built and importable.
 
 
 ---
 
-If either option still fails — what to paste here
+9) If the build fails — what to paste here
 
-If you try Option A or B and the build still fails, paste the last 200–400 lines of the relevant log file(s) created by the tee command:
+If the build fails, paste these exact items (they let me diagnose quickly):
 
-install_cpp.log (or install_cpp_py311.log)
-
-install_inference.log (or install_inference_py311.log)
+1. Tail of the build log:
 
 
-Also include these outputs (run in the same env you used to build):
+
+tail -n 200 ../../install_cpp_build.log
+
+2. Environment & tool diagnostics:
+
+
 
 which python
 python --version
 which pip
 pip --version
-python -c "import torch; print(torch.__version__, torch.version.cuda)"
-ls -l /usr/local/cuda 2>/dev/null || true
+cmake --version || true
+g++ --version || true
+python -c "import sysconfig; print('site-packages:', sysconfig.get_paths()['purelib'])"
+python -c "import pybind11; print('pybind11 ok, include:', pybind11.get_include())" || echo "pybind11 not importable in env"
 
-With those logs I’ll pinpoint the exact missing header / ABI mismatch / linker error and give the precise conda/pip package (or env variable) to fix it.
+3. If the error mentions missing headers like Python.h or pybind11/pybind11.h, paste those missing-file error lines.
+
+
 
 
 ---
 
-Short recommendation
+10) Common quick fixes I’ll give you if needed
 
-If you want the least friction and highest probability of success: create the 3.11 env (Option B). If you prefer to try a fast fix without creating a new env, try the pip shim (Option A) and then run pip install . again.
+pybind11 header errors:
 
-Tell me which option you ran and paste the resulting install_cpp*.log (or the last terminal lines) if anything fails — I’ll debug the exact error.
+conda install -y -c conda-forge pybind11
+
+Python.h missing (rare in conda env) — ensure the env's python dev headers are present:
+
+conda install -y -c conda-forge python-dev  # if available on your platform
+
+g++ / toolchain issues: ensure gxx_linux-64 installed (we already did).
+
+compiler fails on warnings → we removed -Werror to avoid this; if more warnings appear we can further relax flags.
+
+
+
+---
+
+11) Optional: make this build reproducible / add a branch
+
+If you want to keep your fresh copy and track changes:
+
+cd /path/to/DCVC_fresh
+git checkout -b build-fix-pyrans
+git add pyproject.toml src/cpp/setup.py
+git commit -m "PEP517 + robust setup.py for pyrans pybind11 build on py3.12"
+
+
+---
+
+If you want, I can produce a single pasteable one-line script that runs steps 1–8 automatically with variables (I gave earlier such a script). But since you asked to do it step-by-step, follow the numbered steps above and paste back outputs of steps 4/7/8 (or any failure log) and I’ll debug immediately.
+
+Which step would you like to run first, or paste the live output of step 7 (install_cpp_build.log) if you already ran the build?
 
