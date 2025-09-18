@@ -1,26 +1,32 @@
-(dcvc_rt_env) work@main1[YygELffK-session]:~/dcvc/DCVC/src/cpp$ python -m pip install --upgrade pip setuptools wheel build
+(dcvc_rt_env) work@main1[YygELffK-session]:~/dcvc/DCVC_fresh/src/cpp$ python -m pip install . 2>&1 | tee ../../install_cpp_build.log
 Looking in indexes: https://pypi.org/simple, https://pypi.ngc.nvidia.com
-Requirement already satisfied: pip in /home/work/dcvc/miniconda3/envs/dcvc_rt_env/lib/python3.12/site-packages (25.2)
-Requirement already satisfied: setuptools in /home/work/dcvc/miniconda3/envs/dcvc_rt_env/lib/python3.12/site-packages (78.1.1)
-Collecting setuptools
-  Downloading setuptools-80.9.0-py3-none-any.whl.metadata (6.6 kB)
-Requirement already satisfied: wheel in /home/work/dcvc/miniconda3/envs/dcvc_rt_env/lib/python3.12/site-packages (0.45.1)
-Collecting build
-  Downloading build-1.3.0-py3-none-any.whl.metadata (5.6 kB)
-Requirement already satisfied: packaging>=19.1 in /home/work/dcvc/miniconda3/envs/dcvc_rt_env/lib/python3.12/site-packages (from build) (25.0)
-Collecting pyproject_hooks (from build)
-  Downloading pyproject_hooks-1.2.0-py3-none-any.whl.metadata (1.3 kB)
-Downloading setuptools-80.9.0-py3-none-any.whl (1.2 MB)
-   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 1.2/1.2 MB 26.0 MB/s  0:00:00
-Downloading build-1.3.0-py3-none-any.whl (23 kB)
-Downloading pyproject_hooks-1.2.0-py3-none-any.whl (10 kB)
-Installing collected packages: setuptools, pyproject_hooks, build
-  Attempting uninstall: setuptools
-    Found existing installation: setuptools 78.1.1
-    Uninstalling setuptools-78.1.1:
-      Successfully uninstalled setuptools-78.1.1
-Successfully installed build-1.3.0 pyproject_hooks-1.2.0 setuptools-80.9.0
-(dcvc_rt_env) work@main1[YygELffK-session]:~/dcvc/DCVC/src/cpp$ python -m pip install distutils
-Looking in indexes: https://pypi.org/simple, https://pypi.ngc.nvidia.com
-ERROR: Could not find a version that satisfies the requirement distutils (from versions: none)
-ERROR: No matching distribution found for distutils
+Processing /home/work/dcvc/DCVC_fresh/src/cpp
+  Preparing metadata (setup.py): started
+  Preparing metadata (setup.py): finished with status 'error'
+  error: subprocess-exited-with-error
+  
+  × python setup.py egg_info did not run successfully.
+  │ exit code: 1
+  ╰─> [12 lines of output]
+      /home/work/dcvc/miniconda3/envs/dcvc_rt_env/lib/python3.12/site-packages/_distutils_hack/__init__.py:53: UserWarning: Reliance on distutils from stdlib is deprecated. Users must rely on setuptools to provide the distutils module. Avoid importing distutils or import setuptools first, and avoid setting SETUPTOOLS_USE_DISTUTILS=stdlib. Register concerns at https://github.com/pypa/setuptools/issues/new?template=distutils-deprecation.yml
+        warnings.warn(
+      ERROR: Can not execute `setup.py` since setuptools failed to import in the build environment with exception:
+      Traceback (most recent call last):
+        File "<pip-setuptools-caller>", line 14, in <module>
+        File "/home/work/dcvc/miniconda3/envs/dcvc_rt_env/lib/python3.12/site-packages/setuptools/__init__.py", line 23, in <module>
+          from . import logging, monkey
+        File "/home/work/dcvc/miniconda3/envs/dcvc_rt_env/lib/python3.12/site-packages/setuptools/logging.py", line 5, in <module>
+          from . import monkey
+        File "/home/work/dcvc/miniconda3/envs/dcvc_rt_env/lib/python3.12/site-packages/setuptools/monkey.py", line 13, in <module>
+          import distutils.filelist
+      ModuleNotFoundError: No module named 'distutils'
+      [end of output]
+  
+  note: This error originates from a subprocess, and is likely not a problem with pip.
+error: metadata-generation-failed
+
+× Encountered error while generating package metadata.
+╰─> See above for output.
+
+note: This is an issue with the package mentioned above, not pip.
+hint: See above for details.
