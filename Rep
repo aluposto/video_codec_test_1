@@ -1,97 +1,107 @@
-Got it 👍 — long cat <<EOF ... EOF blocks are painful to paste in some terminals.
-Let’s break Step 3 into short copy-pasteable chunks so you can enter them safely.
+Great — nice job. Now we’ll continue the step-by-step build. Below are the next commands to run in your terminal, one block at a time. I’ll assume you’re still in the repo root (the fresh clone) and that src/cpp/setup.py has been replaced.
+
+Run these steps in order. If any step fails, copy the exact output (or the files/logs I ask for) and paste it here and I’ll debug.
 
 
 ---
 
-Step 3 (short version)
+Step 4 — Activate your conda env (must be Python 3.12)
 
-1. Remove the old setup.py:
+Run:
 
+conda activate dcvc_rt_env
+python --version
+which python
 
+Expect Python 3.12.x and which python pointing into your conda env (path contains envs/dcvc_rt_env).
 
-rm src/cpp/setup.py
-
-2. Create a new empty file:
-
-
-
-touch src/cpp/setup.py
-
-3. Open it in a terminal editor (choose whichever you’re comfortable with):
-
-
-
-nano src/cpp/setup.py
-
-(or use vi, vim, etc.)
-
-4. Paste this content inside the editor (it’s only ~50 lines):
-
-
-
-from setuptools import setup, Extension
-from setuptools.command.build_ext import build_ext as _build_ext
-import glob
-import sys
-from pathlib import Path
-
-HERE = Path(__file__).resolve().parent
-
-if sys.platform == "win32":
-    extra_compile_args = ['/std:c++17', '/O2', '/W4', '/WX', '/wd4100']
-    extra_link_args = []
-else:
-    # NOTE: no -Werror so warnings won't fail the build
-    extra_compile_args = ['-std=c++17', '-O3', '-fPIC', '-Wall', '-Wextra']
-    extra_link_args = []
-
-class build_ext(_build_ext):
-    def finalize_options(self):
-        super().finalize_options()
-        try:
-            import pybind11
-            inc = pybind11.get_include()
-            if inc not in self.include_dirs:
-                self.include_dirs.append(inc)
-        except Exception:
-            pass
-
-# Collect all .cpp files inside pyrans/
-sources = glob.glob(str(HERE / 'pyrans' / '*.cpp'))
-if not sources:
-    raise SystemExit("No source files found under src/cpp/pyrans/*.cpp")
-
-ext = Extension(
-    name='MLCodec_extensions_cpp',
-    sources=sources,
-    include_dirs=[],  # pybind11 include is appended in build_ext
-    extra_compile_args=extra_compile_args,
-    extra_link_args=extra_link_args,
-    language='c++'
-)
-
-setup(
-    name="MLCodec_extensions_cpp",
-    ext_modules=[ext],
-    cmdclass={"build_ext": build_ext},
-    zip_safe=False,
-    python_requires=">=3.12",
-)
-
-5. Save and exit the editor (Ctrl+O then Ctrl+X in nano, or :wq in vim).
-
-
-6. Confirm the file is in place:
-
-
-
-ls -l src/cpp/setup.py
+If conda is not found, tell me and I’ll give micromamba commands.
 
 
 ---
 
-👉 That’s it — Step 3 is just replacing src/cpp/setup.py with this new version.
+Step 5 — Install compilers & pybind11 (no sudo)
 
-Would you like me to shorten it even more (e.g. split into 2–3 paste blocks) so you don’t have to scroll inside the editor?
+Make sure compilers & pybind11 are available inside the env:
+
+conda install -y -c conda-forge cmake ninja gxx_linux-64 || true
+conda install -y -c conda-forge pybind11 || python -m pip install pybind11 || true
+
+# quick verification
+cmake --version || true
+g++ --version || true
+python -c "import pybind11; print('pybind11', pybind11.__version__, 'include', pybind11.get_include())" || echo "pybind11 not importable in env"
+
+
+---
+
+Step 6 — Upgrade packaging toolchain
+
+python -m pip install --upgrade pip setuptools wheel build
+
+
+---
+
+Step 7 — Build & install the C++ extension (from src/cpp)
+
+This will run pip install . from src/cpp and save the log to install_cpp_build.log in the repo root:
+
+cd src/cpp
+python -m pip install . 2>&1 | tee ../../install_cpp_build.log
+
+When it finishes, show the last 80 lines:
+
+tail -n 80 ../../install_cpp_build.log
+
+If the install succeeds, run the quick import test below. If it fails, paste the last 200 lines of install_cpp_build.log here.
+
+
+---
+
+Step 8 — Quick import smoke test (run if build succeeded)
+
+Run this in your terminal (same env):
+
+python - <<'PY'
+import importlib
+try:
+    m = importlib.import_module("MLCodec_extensions_cpp")
+    print("OK: loaded MLCodec_extensions_cpp")
+    print("Has RansEncoder:", hasattr(m, "RansEncoder"))
+    print("Has RansDecoder:", hasattr(m, "RansDecoder"))
+except Exception as e:
+    print("Import failed:", e)
+    raise
+PY
+
+
+---
+
+What to paste here if anything goes wrong
+
+1. If conda activate fails, paste the conda error.
+
+
+2. If cmake/g++/pybind11 checks fail, paste their outputs.
+
+
+3. If pip install . fails, paste the last 200 lines of the build log:
+
+
+
+tail -n 200 install_cpp_build.log
+
+4. Also paste:
+
+
+
+which python
+python --version
+which pip
+pip --version
+
+
+---
+
+When you’ve run Steps 4–7, paste the outputs (or the failure log). I’ll parse the compiler/linker output and give the exact fix — e.g., specific conda package to install, or a tiny edit to setup.py or the C++ compile flags.
 
