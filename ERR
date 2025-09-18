@@ -1,59 +1,32 @@
-# Cell 2: install build tools into the current conda env
-import os, subprocess, sys
+(dcvc_rt_env) work@main1[YygELffK-session]:~/dcvc/DCVC/src/cpp$ python -m pip install . 2>&1 | tee ../../install_cpp.log
+Looking in indexes: https://pypi.org/simple, https://pypi.ngc.nvidia.com
+Processing /home/work/dcvc/DCVC/src/cpp
+  Preparing metadata (setup.py): started
+  Preparing metadata (setup.py): finished with status 'error'
+  error: subprocess-exited-with-error
+  
+  × python setup.py egg_info did not run successfully.
+  │ exit code: 1
+  ╰─> [12 lines of output]
+      /home/work/dcvc/miniconda3/envs/dcvc_rt_env/lib/python3.12/site-packages/_distutils_hack/__init__.py:53: UserWarning: Reliance on distutils from stdlib is deprecated. Users must rely on setuptools to provide the distutils module. Avoid importing distutils or import setuptools first, and avoid setting SETUPTOOLS_USE_DISTUTILS=stdlib. Register concerns at https://github.com/pypa/setuptools/issues/new?template=distutils-deprecation.yml
+        warnings.warn(
+      ERROR: Can not execute `setup.py` since setuptools failed to import in the build environment with exception:
+      Traceback (most recent call last):
+        File "<pip-setuptools-caller>", line 14, in <module>
+        File "/home/work/dcvc/miniconda3/envs/dcvc_rt_env/lib/python3.12/site-packages/setuptools/__init__.py", line 24, in <module>
+          from . import logging, monkey
+        File "/home/work/dcvc/miniconda3/envs/dcvc_rt_env/lib/python3.12/site-packages/setuptools/logging.py", line 5, in <module>
+          from . import monkey
+        File "/home/work/dcvc/miniconda3/envs/dcvc_rt_env/lib/python3.12/site-packages/setuptools/monkey.py", line 13, in <module>
+          import distutils.filelist
+      ModuleNotFoundError: No module named 'distutils'
+      [end of output]
+  
+  note: This error originates from a subprocess, and is likely not a problem with pip.
+error: metadata-generation-failed
 
-print("Installing build tools into current conda env (no sudo)...")
-subprocess.run(["conda","install","-y","-n", os.environ.get("CONDA_DEFAULT_ENV","dcvc_rt_env"),
-                "-c","conda-forge","cmake","ninja","gxx_linux-64"], check=False)
+× Encountered error while generating package metadata.
+╰─> See above for output.
 
-# verify
-for cmd in ("cmake","g++","ninja"):
-    try:
-        print(cmd, subprocess.check_output([cmd,"--version"], stderr=subprocess.STDOUT, text=True).splitlines()[0])
-    except Exception as e:
-        print(cmd, "not found or error:", e)
-
-
-
-
----------------------------------------------------------------------------
-FileNotFoundError                         Traceback (most recent call last)
-Cell In[14], line 5
-      2 import os, subprocess, sys
-      4 print("Installing build tools into current conda env (no sudo)...")
-----> 5 subprocess.run(["conda","install","-y","-n", os.environ.get("CONDA_DEFAULT_ENV","dcvc_rt_env"),
-      6                 "-c","conda-forge","cmake","ninja","gxx_linux-64"], check=False)
-      8 # verify
-      9 for cmd in ("cmake","g++","ninja"):
-
-File ~/dcvc/miniconda3/envs/dcvc_rt_env/lib/python3.12/subprocess.py:548, in run(input, capture_output, timeout, check, *popenargs, **kwargs)
-    545     kwargs['stdout'] = PIPE
-    546     kwargs['stderr'] = PIPE
---> 548 with Popen(*popenargs, **kwargs) as process:
-    549     try:
-    550         stdout, stderr = process.communicate(input, timeout=timeout)
-
-File ~/dcvc/miniconda3/envs/dcvc_rt_env/lib/python3.12/subprocess.py:1026, in Popen.__init__(self, args, bufsize, executable, stdin, stdout, stderr, preexec_fn, close_fds, shell, cwd, env, universal_newlines, startupinfo, creationflags, restore_signals, start_new_session, pass_fds, user, group, extra_groups, encoding, errors, text, umask, pipesize, process_group)
-   1022         if self.text_mode:
-   1023             self.stderr = io.TextIOWrapper(self.stderr,
-   1024                     encoding=encoding, errors=errors)
--> 1026     self._execute_child(args, executable, preexec_fn, close_fds,
-   1027                         pass_fds, cwd, env,
-   1028                         startupinfo, creationflags, shell,
-   1029                         p2cread, p2cwrite,
-   1030                         c2pread, c2pwrite,
-   1031                         errread, errwrite,
-   1032                         restore_signals,
-   1033                         gid, gids, uid, umask,
-   1034                         start_new_session, process_group)
-   1035 except:
-   1036     # Cleanup if the child failed starting.
-   1037     for f in filter(None, (self.stdin, self.stdout, self.stderr)):
-
-File ~/dcvc/miniconda3/envs/dcvc_rt_env/lib/python3.12/subprocess.py:1955, in Popen._execute_child(self, args, executable, preexec_fn, close_fds, pass_fds, cwd, env, startupinfo, creationflags, shell, p2cread, p2cwrite, c2pread, c2pwrite, errread, errwrite, restore_signals, gid, gids, uid, umask, start_new_session, process_group)
-   1953     err_msg = os.strerror(errno_num)
-   1954 if err_filename is not None:
--> 1955     raise child_exception_type(errno_num, err_msg, err_filename)
-   1956 else:
-   1957     raise child_exception_type(errno_num, err_msg)
-
-FileNotFoundError: [Errno 2] No such file or directory: 'conda'
+note: This is an issue with the package mentioned above, not pip.
+hint: See above for details.
