@@ -1,37 +1,111 @@
-Nice — that error is clear: setuptools is trying to import the stdlib distutils module, but your Python 3.12 environment doesn’t have it available. That’s common on newer Pythons because distutils was removed from the stdlib and you need to install a packaged version (or the appropriate conda package) into the env.
-
-Quick fix (run these in your terminal while dcvc_rt_env is activated):
-
-1. Install the distutils package + ensure setuptools/wheel/build tooling are present (use conda so no sudo needed):
+Thanks — that conda solver error is expected: python-distutils isn’t available for your Python 3.12 env on conda-forge and the build package variant the solver found requires a Python version constraint that conflicts with 3.12. In short: the easiest reliable fixes are (A) try a pip-based workaround that supplies distutils at runtime, or (B) create a Python 3.11 conda environment (recommended for building scientific/CUDA packages). I’ll give both options with exact terminal commands — run whichever you prefer.
 
 
+---
 
-conda activate dcvc_rt_env
+Option A — Quick pip workaround (try this first)
 
-# preferred: install python-distutils from conda-forge and common build tools
-conda install -y -c conda-forge python-distutils setuptools pip wheel build
+This attempts to install missing build tooling via pip (no sudo). It often works and is fastest.
 
-2. Upgrade pip/setuptools (safety):
+Run these in your terminal inside dcvc_rt_env:
 
+# 1. upgrade pip/setuptools/wheel
+python -m pip install --upgrade pip setuptools wheel build
 
+# 2. install a distutils shim (this package is a lightweight shim that can fix missing distutils)
+# Note: if this package is not present or fails, we'll fall back to Option B below.
+python -m pip install distutils
 
-python -m pip install --upgrade pip setuptools wheel
+# 3. confirm distutils import works
+python -c "import importlib,sys; importlib.import_module('distutils'); print('distutils OK')"
 
-3. Retry your pip install . and capture the log:
-
-
-
-# from src/cpp
+# 4. retry building the C++ package
+cd ~/dcvc/DCVC/src/cpp
 python -m pip install . 2>&1 | tee ../../install_cpp.log
 
-What to expect
+If the python -c "import distutils" line prints distutils OK and the pip install . in step 4 proceeds, great — continue with the repo's next install step:
 
-After step (1) python -c "import distutils; print(distutils.__file__)" should succeed.
+cd ../layers/extensions/inference
+python -m pip install . 2>&1 | tee ../../../install_inference.log
 
-pip install . should now at least progress past the egg_info/metadata stage. If it fails later (compiler, missing CUDA headers, undefined symbols), the log will show those errors.
+If distutils pip install fails or pip install . still errors out with distutils-related problems, proceed to Option B.
 
 
-If it still fails, paste the last ~200 lines of ../../install_cpp.log here and I’ll diagnose the next error (likely a missing header, mismatched torch/tensorlib ABI, or CUDA include issue) and give the exact conda package or env variable to fix it.
+---
 
-If for some reason conda install python-distutils isn’t available on your platform, tell me and I’ll give an alternate micromamba or pip-based workaround.
+Option B — Create a fresh Python 3.11 conda env (recommended, most reliable)
+
+Many build toolchains and CUDA/PyTorch wheels are still most reliable on Python 3.11. Creating a new env avoids the conda solver conflict you hit.
+
+Run these commands in a terminal (they don’t require sudo):
+
+# 1) create a new env with python 3.11 and compilers
+conda create -y -n dcvc_rt_py311 -c conda-forge python=3.11 cmake ninja gxx_linux-64 pip
+
+# 2) activate it
+conda activate dcvc_rt_py311
+
+# 3) install PyTorch (choose the wheel matching your CUDA — you earlier used cu126; adapt if necessary)
+# Example for CUDA 12.6 (if available)
+python -m pip install --index-url https://download.pytorch.org/whl/cu126 torch torchvision torchaudio
+
+# If you only need CPU, use:
+# python -m pip install --index-url https://download.pytorch.org/whl/cpu torch torchvision torchaudio
+
+# 4) from repo root, install python requirements
+pip install -r requirements.txt
+
+# 5) build/install the C++/CUDA pieces
+cd src/cpp
+python -m pip install . 2>&1 | tee ../../install_cpp_py311.log
+
+cd ../layers/extensions/inference
+python -m pip install . 2>&1 | tee ../../../install_inference_py311.log
+
+After this, verify imports:
+
+# verify compiled artifacts and imports
+python - <<'PY'
+import glob, importlib
+print('so files:', glob.glob('**/*.so', recursive=True)[:20])
+try:
+    import src.layers.cuda_inference as ci
+    print('import ok:', ci)
+except Exception as e:
+    print('import error:', e)
+PY
+
+If that succeeds, run your test_video.py as before.
+
+
+---
+
+If either option still fails — what to paste here
+
+If you try Option A or B and the build still fails, paste the last 200–400 lines of the relevant log file(s) created by the tee command:
+
+install_cpp.log (or install_cpp_py311.log)
+
+install_inference.log (or install_inference_py311.log)
+
+
+Also include these outputs (run in the same env you used to build):
+
+which python
+python --version
+which pip
+pip --version
+python -c "import torch; print(torch.__version__, torch.version.cuda)"
+ls -l /usr/local/cuda 2>/dev/null || true
+
+With those logs I’ll pinpoint the exact missing header / ABI mismatch / linker error and give the precise conda/pip package (or env variable) to fix it.
+
+
+---
+
+Short recommendation
+
+If you want the least friction and highest probability of success: create the 3.11 env (Option B). If you prefer to try a fast fix without creating a new env, try the pip shim (Option A) and then run pip install . again.
+
+Tell me which option you ran and paste the resulting install_cpp*.log (or the last terminal lines) if anything fails — I’ll debug the exact error.
 
