@@ -1,129 +1,149 @@
-# in a notebook cell:
-!PYTHONPATH=$PWD python training.py \
-  --train-glob "data/frames/train/**/*.png" \
-  --val-glob "data/frames/val/**/*.png" \
-  --patch-size 256 --temporal-len 4 --batch-size 6 \
-  --epochs 30 --cuda --amp \
-  --pretrained "./checkpoints/cvpr2025_video.pth.tar" \
-  --lambda-rd 0.01 \
-  --save-dir "./checkpoints_finetune_lambda0.01" \
-  --log-dir "./logs/dcvc_finetune_lambda0.01" \
-  --workers 4
+Nice — you’re already in the right place. Below I’ll give a concise, copy-paste set of notebook cells and shell commands you can run from inside your Jupyter session (no sudo required) to build DCVC native extensions, run a quick test, and handle the most common failure modes. I’ll assume your kernel is already using the dcvc_rt_env conda env (if not, I also show exactly how to force running commands inside it).
+
+
+---
+
+1) Quick checks (run these first)
+
+Paste into one notebook cell and run:
+
+# confirm conda env and python
+which python
+python --version
+python -c "import torch; print('torch', torch.__version__, 'cuda', torch.version.cuda)"
+# check GPU drivers / cuda availability
+python -c "import torch; print('cuda_available', torch.cuda.is_available(), 'n_gpus', torch.cuda.device_count())"
+
+# (optional) check system CUDA and driver if nvcc is available
+which nvcc || echo "nvcc not found (that's okay if using driver-only)"
+nvidia-smi || echo "nvidia-smi not found or no GPU"
+
+If these print sensible info (python pointing to .../envs/dcvc_rt_env/bin/python, torch imports, and cuda shows 12.6 or None), proceed.
+
+
+---
+
+2) Ensure build tools are in your conda env
+
+If you haven't installed cmake, g++, and ninja into the environment, add them now (no sudo):
+
+# Run inside your env — this runs conda in your current session; safe if env is active.
+conda install -y -n dcvc_rt_env -c conda-forge cmake ninja gxx_linux-64
+
+If your notebook process is already using dcvc_rt_env python, you can also run:
+
+# make sure these binaries are visible to the current kernel session
+which cmake || echo "cmake not on PATH"
+cmake --version || true
+which g++ || echo "g++ not on PATH"
+g++ --version || true
+which ninja || echo "ninja not on PATH"
+ninja --version || true
+
+
+---
+
+3) Build the native extensions (repo root)
+
+From the repository root (where setup.py is located), run:
+
+# Option A: build in-place
+python setup.py build_ext --inplace
+
+# If you prefer editable install:
+pip install -v -e .
+
+Notes:
+
+Watch the output for compiler errors (missing headers, symbol errors). Copy the full traceback if something fails.
+
+If the build completes, you should see compiled modules (e.g. _cuda_inference.*.so) somewhere under src/ or build/.
 
 
 
-cannot import cuda implementation for inference, fallback to pytorch.
-Device: cuda
-Train frames: 610 Val frames: 610
-Loaded pretrained checkpoint: ./checkpoints/cvpr2025_video.pth.tar
-Train Epoch 0 it 0/25 loss=0.002608 dist=0.002608 bpp=0.000000
-Train Epoch 0 finished: avg_loss=0.000403 avg_dist=0.000403 avg_bpp=0.000000 throughput_steps_per_sec=1.97
-Val Epoch 0 finished: avg_loss=0.000139 avg_dist=0.000139 avg_bpp=0.000000 throughput_steps_per_sec=3.60
-Saved best checkpoint: ./checkpoints_finetune_lambda0.01/best_epoch000.pth.tar
-Train Epoch 1 it 0/25 loss=0.000111 dist=0.000111 bpp=0.000000
-Train Epoch 1 finished: avg_loss=0.000107 avg_dist=0.000107 avg_bpp=0.000000 throughput_steps_per_sec=2.86
-Val Epoch 1 finished: avg_loss=0.000099 avg_dist=0.000099 avg_bpp=0.000000 throughput_steps_per_sec=3.87
-Saved best checkpoint: ./checkpoints_finetune_lambda0.01/best_epoch001.pth.tar
-Train Epoch 2 it 0/25 loss=0.000129 dist=0.000129 bpp=0.000000
-Train Epoch 2 finished: avg_loss=0.000076 avg_dist=0.000076 avg_bpp=0.000000 throughput_steps_per_sec=2.90
-Val Epoch 2 finished: avg_loss=0.000072 avg_dist=0.000072 avg_bpp=0.000000 throughput_steps_per_sec=3.84
-Saved best checkpoint: ./checkpoints_finetune_lambda0.01/best_epoch002.pth.tar
-Train Epoch 3 it 0/25 loss=0.000099 dist=0.000099 bpp=0.000000
-Train Epoch 3 finished: avg_loss=0.000058 avg_dist=0.000058 avg_bpp=0.000000 throughput_steps_per_sec=2.87
-Val Epoch 3 finished: avg_loss=0.000056 avg_dist=0.000056 avg_bpp=0.000000 throughput_steps_per_sec=3.96
-Saved best checkpoint: ./checkpoints_finetune_lambda0.01/best_epoch003.pth.tar
-Train Epoch 4 it 0/25 loss=0.000097 dist=0.000097 bpp=0.000000
-Train Epoch 4 finished: avg_loss=0.000054 avg_dist=0.000054 avg_bpp=0.000000 throughput_steps_per_sec=2.88
-Val Epoch 4 finished: avg_loss=0.000043 avg_dist=0.000043 avg_bpp=0.000000 throughput_steps_per_sec=3.97
-Saved best checkpoint: ./checkpoints_finetune_lambda0.01/best_epoch004.pth.tar
-Saved checkpoint: ./checkpoints_finetune_lambda0.01/epoch004.pth.tar
-Train Epoch 5 it 0/25 loss=0.000038 dist=0.000038 bpp=0.000000
-Train Epoch 5 finished: avg_loss=0.000049 avg_dist=0.000049 avg_bpp=0.000000 throughput_steps_per_sec=2.91
-Val Epoch 5 finished: avg_loss=0.000045 avg_dist=0.000045 avg_bpp=0.000000 throughput_steps_per_sec=3.97
-Train Epoch 6 it 0/25 loss=0.000025 dist=0.000025 bpp=0.000000
-Train Epoch 6 finished: avg_loss=0.000041 avg_dist=0.000041 avg_bpp=0.000000 throughput_steps_per_sec=2.87
-Val Epoch 6 finished: avg_loss=0.000047 avg_dist=0.000047 avg_bpp=0.000000 throughput_steps_per_sec=4.01
-Train Epoch 7 it 0/25 loss=0.000039 dist=0.000039 bpp=0.000000
-Train Epoch 7 finished: avg_loss=0.000054 avg_dist=0.000054 avg_bpp=0.000000 throughput_steps_per_sec=2.87
-Val Epoch 7 finished: avg_loss=0.000038 avg_dist=0.000038 avg_bpp=0.000000 throughput_steps_per_sec=3.99
-Saved best checkpoint: ./checkpoints_finetune_lambda0.01/best_epoch007.pth.tar
-Train Epoch 8 it 0/25 loss=0.000116 dist=0.000116 bpp=0.000000
-Train Epoch 8 finished: avg_loss=0.000039 avg_dist=0.000039 avg_bpp=0.000000 throughput_steps_per_sec=2.93
-Val Epoch 8 finished: avg_loss=0.000045 avg_dist=0.000045 avg_bpp=0.000000 throughput_steps_per_sec=3.90
-Train Epoch 9 it 0/25 loss=0.000077 dist=0.000077 bpp=0.000000
-Train Epoch 9 finished: avg_loss=0.000041 avg_dist=0.000041 avg_bpp=0.000000 throughput_steps_per_sec=2.89
-Val Epoch 9 finished: avg_loss=0.000033 avg_dist=0.000033 avg_bpp=0.000000 throughput_steps_per_sec=3.97
-Saved best checkpoint: ./checkpoints_finetune_lambda0.01/best_epoch009.pth.tar
-Saved checkpoint: ./checkpoints_finetune_lambda0.01/epoch009.pth.tar
-Train Epoch 10 it 0/25 loss=0.000031 dist=0.000031 bpp=0.000000
-Train Epoch 10 finished: avg_loss=0.000030 avg_dist=0.000030 avg_bpp=0.000000 throughput_steps_per_sec=2.89
-Val Epoch 10 finished: avg_loss=0.000036 avg_dist=0.000036 avg_bpp=0.000000 throughput_steps_per_sec=3.97
-Train Epoch 11 it 0/25 loss=0.000026 dist=0.000026 bpp=0.000000
-Train Epoch 11 finished: avg_loss=0.000034 avg_dist=0.000034 avg_bpp=0.000000 throughput_steps_per_sec=2.87
-Val Epoch 11 finished: avg_loss=0.000040 avg_dist=0.000040 avg_bpp=0.000000 throughput_steps_per_sec=3.91
-Train Epoch 12 it 0/25 loss=0.000021 dist=0.000021 bpp=0.000000
-Train Epoch 12 finished: avg_loss=0.000046 avg_dist=0.000046 avg_bpp=0.000000 throughput_steps_per_sec=2.89
-Val Epoch 12 finished: avg_loss=0.000041 avg_dist=0.000041 avg_bpp=0.000000 throughput_steps_per_sec=3.91
-Train Epoch 13 it 0/25 loss=0.000093 dist=0.000093 bpp=0.000000
-Train Epoch 13 finished: avg_loss=0.000055 avg_dist=0.000055 avg_bpp=0.000000 throughput_steps_per_sec=2.88
-Val Epoch 13 finished: avg_loss=0.000043 avg_dist=0.000043 avg_bpp=0.000000 throughput_steps_per_sec=3.91
-Train Epoch 14 it 0/25 loss=0.000038 dist=0.000038 bpp=0.000000
-Train Epoch 14 finished: avg_loss=0.000045 avg_dist=0.000045 avg_bpp=0.000000 throughput_steps_per_sec=2.66
-Val Epoch 14 finished: avg_loss=0.000031 avg_dist=0.000031 avg_bpp=0.000000 throughput_steps_per_sec=3.94
-Saved best checkpoint: ./checkpoints_finetune_lambda0.01/best_epoch014.pth.tar
-Saved checkpoint: ./checkpoints_finetune_lambda0.01/epoch014.pth.tar
-Train Epoch 15 it 0/25 loss=0.000053 dist=0.000053 bpp=0.000000
-Train Epoch 15 finished: avg_loss=0.000035 avg_dist=0.000035 avg_bpp=0.000000 throughput_steps_per_sec=2.84
-Val Epoch 15 finished: avg_loss=0.000032 avg_dist=0.000032 avg_bpp=0.000000 throughput_steps_per_sec=3.96
-Train Epoch 16 it 0/25 loss=0.000009 dist=0.000009 bpp=0.000000
-Train Epoch 16 finished: avg_loss=0.000031 avg_dist=0.000031 avg_bpp=0.000000 throughput_steps_per_sec=2.87
-Val Epoch 16 finished: avg_loss=0.000033 avg_dist=0.000033 avg_bpp=0.000000 throughput_steps_per_sec=3.85
-Train Epoch 17 it 0/25 loss=0.000045 dist=0.000045 bpp=0.000000
-Train Epoch 17 finished: avg_loss=0.000042 avg_dist=0.000042 avg_bpp=0.000000 throughput_steps_per_sec=2.86
-Val Epoch 17 finished: avg_loss=0.000041 avg_dist=0.000041 avg_bpp=0.000000 throughput_steps_per_sec=3.98
-Train Epoch 18 it 0/25 loss=0.000088 dist=0.000088 bpp=0.000000
-Train Epoch 18 finished: avg_loss=0.000053 avg_dist=0.000053 avg_bpp=0.000000 throughput_steps_per_sec=2.87
-Val Epoch 18 finished: avg_loss=0.000044 avg_dist=0.000044 avg_bpp=0.000000 throughput_steps_per_sec=3.94
-Train Epoch 19 it 0/25 loss=0.000095 dist=0.000095 bpp=0.000000
-Train Epoch 19 finished: avg_loss=0.000040 avg_dist=0.000040 avg_bpp=0.000000 throughput_steps_per_sec=2.90
-Val Epoch 19 finished: avg_loss=0.000031 avg_dist=0.000031 avg_bpp=0.000000 throughput_steps_per_sec=3.94
-Saved best checkpoint: ./checkpoints_finetune_lambda0.01/best_epoch019.pth.tar
-Saved checkpoint: ./checkpoints_finetune_lambda0.01/epoch019.pth.tar
-Train Epoch 20 it 0/25 loss=0.000036 dist=0.000036 bpp=0.000000
-Train Epoch 20 finished: avg_loss=0.000042 avg_dist=0.000042 avg_bpp=0.000000 throughput_steps_per_sec=2.83
-Val Epoch 20 finished: avg_loss=0.000042 avg_dist=0.000042 avg_bpp=0.000000 throughput_steps_per_sec=3.99
-Train Epoch 21 it 0/25 loss=0.000032 dist=0.000032 bpp=0.000000
-Train Epoch 21 finished: avg_loss=0.000035 avg_dist=0.000035 avg_bpp=0.000000 throughput_steps_per_sec=2.90
-Val Epoch 21 finished: avg_loss=0.000029 avg_dist=0.000029 avg_bpp=0.000000 throughput_steps_per_sec=4.01
-Saved best checkpoint: ./checkpoints_finetune_lambda0.01/best_epoch021.pth.tar
-Train Epoch 22 it 0/25 loss=0.000026 dist=0.000026 bpp=0.000000
-Train Epoch 22 finished: avg_loss=0.000029 avg_dist=0.000029 avg_bpp=0.000000 throughput_steps_per_sec=2.93
-Val Epoch 22 finished: avg_loss=0.000026 avg_dist=0.000026 avg_bpp=0.000000 throughput_steps_per_sec=3.97
-Saved best checkpoint: ./checkpoints_finetune_lambda0.01/best_epoch022.pth.tar
-Train Epoch 23 it 0/25 loss=0.000014 dist=0.000014 bpp=0.000000
-Train Epoch 23 finished: avg_loss=0.000023 avg_dist=0.000023 avg_bpp=0.000000 throughput_steps_per_sec=2.91
-Val Epoch 23 finished: avg_loss=0.000025 avg_dist=0.000025 avg_bpp=0.000000 throughput_steps_per_sec=3.97
-Saved best checkpoint: ./checkpoints_finetune_lambda0.01/best_epoch023.pth.tar
-Train Epoch 24 it 0/25 loss=0.000035 dist=0.000035 bpp=0.000000
-Train Epoch 24 finished: avg_loss=0.000023 avg_dist=0.000023 avg_bpp=0.000000 throughput_steps_per_sec=2.90
-Val Epoch 24 finished: avg_loss=0.000022 avg_dist=0.000022 avg_bpp=0.000000 throughput_steps_per_sec=3.92
-Saved best checkpoint: ./checkpoints_finetune_lambda0.01/best_epoch024.pth.tar
-Saved checkpoint: ./checkpoints_finetune_lambda0.01/epoch024.pth.tar
-Train Epoch 25 it 0/25 loss=0.000020 dist=0.000020 bpp=0.000000
-Train Epoch 25 finished: avg_loss=0.000028 avg_dist=0.000028 avg_bpp=0.000000 throughput_steps_per_sec=2.86
-Val Epoch 25 finished: avg_loss=0.000020 avg_dist=0.000020 avg_bpp=0.000000 throughput_steps_per_sec=3.95
-Saved best checkpoint: ./checkpoints_finetune_lambda0.01/best_epoch025.pth.tar
-Train Epoch 26 it 0/25 loss=0.000015 dist=0.000015 bpp=0.000000
-Train Epoch 26 finished: avg_loss=0.000023 avg_dist=0.000023 avg_bpp=0.000000 throughput_steps_per_sec=2.85
-Val Epoch 26 finished: avg_loss=0.000022 avg_dist=0.000022 avg_bpp=0.000000 throughput_steps_per_sec=3.92
-Train Epoch 27 it 0/25 loss=0.000018 dist=0.000018 bpp=0.000000
-Train Epoch 27 finished: avg_loss=0.000026 avg_dist=0.000026 avg_bpp=0.000000 throughput_steps_per_sec=2.88
-Val Epoch 27 finished: avg_loss=0.000027 avg_dist=0.000027 avg_bpp=0.000000 throughput_steps_per_sec=3.98
-Train Epoch 28 it 0/25 loss=0.000027 dist=0.000027 bpp=0.000000
-Train Epoch 28 finished: avg_loss=0.000025 avg_dist=0.000025 avg_bpp=0.000000 throughput_steps_per_sec=2.92
-Val Epoch 28 finished: avg_loss=0.000031 avg_dist=0.000031 avg_bpp=0.000000 throughput_steps_per_sec=3.91
-Train Epoch 29 it 0/25 loss=0.000025 dist=0.000025 bpp=0.000000
-Train Epoch 29 finished: avg_loss=0.000026 avg_dist=0.000026 avg_bpp=0.000000 throughput_steps_per_sec=2.92
-Val Epoch 29 finished: avg_loss=0.000028 avg_dist=0.000028 avg_bpp=0.000000 throughput_steps_per_sec=3.93
-Saved checkpoint: ./checkpoints_finetune_lambda0.01/epoch029.pth.tar
-Training finished.
+---
+
+4) Run the test script (example)
+
+After a successful build, run:
+
+# adjust paths as needed
+python test_video.py --input path/to/input.mp4 --output path/to/out.mp4 --model_path checkpoints/dcvc.pth.tar
+
+If your notebook kernel is not the same env, run via conda run:
+
+conda run -n dcvc_rt_env python test_video.py --input path/to/input.mp4 --output path/to/out.mp4 --model_path checkpoints/dcvc.pth.tar
+
+
+---
+
+5) If build fails — quick fallback stub (lets code run on CPU)
+
+If python setup.py ... fails and you need to proceed for quick testing, add a tiny fallback that avoids the compiled extension import error.
+
+Create or replace src/layers/cuda_inference.py with:
+
+# src/layers/cuda_inference.py
+try:
+    # compiled extension (preferred)
+    from ._cuda_inference import replicate_pad
+except Exception:
+    # fallback using PyTorch CPU implementation (slow but functional)
+    import torch
+    import torch.nn.functional as F
+    def replicate_pad(x, pad):
+        return F.pad(x, pad, mode='replicate')
+
+Then re-run the test script with the same command in step 4. This is only a CPU fallback — it's slower and may not produce identical performance, but it often lets you validate the rest of the pipeline.
+
+
+---
+
+6) Common errors & remedies (what to paste back to me if things still break)
+
+If you hit errors, copy the full error output and paste it here. Useful errors include:
+
+Compiler missing / not found: g++: command not found — fix by conda install -c conda-forge gxx_linux-64 (we already included that).
+
+Missing header (e.g., Python.h, cuda.h): will show which package is missing; often python-dev or cudatoolkit-dev is needed — for headers in conda env: conda install -c conda-forge python-dev (rare) or ensure CUDA toolkit headers are available for your CUDA version.
+
+Torch header mismatch: errors mentioning ATen or caffe2 — usually caused by mismatch between the PyTorch version used to compile and runtime. Reinstall the same torch wheel in the env and rebuild.
+
+CUDA/driver mismatch: if torch.cuda.is_available() is False but nvidia-smi exists, confirm your driver supports CUDA 12.6 or match PyTorch wheel to installed driver/CUDA. If needed, try CPU-only torch wheel.
+
+Undefined symbols at import time of compiled .so: usually due to incompatible compiler or ABI — try using the same compilers in conda (we used gxx_linux-64) and rebuild.
+
+
+If any of the above errors occur, paste the entire traceback into the chat and I’ll point to the exact fix and exact conda/pip command to run.
+
+
+---
+
+7) Quick verification after build
+
+To confirm the compiled module loads:
+
+python - <<'PY'
+import importlib, pkgutil, sys
+try:
+    import src.layers.cuda_inference as ci
+    print("Loaded cuda_inference:", ci)
+except Exception as e:
+    print("Failed to import compiled module:", e)
+# list compiled extensions in repo
+import glob
+print("Compiled artifacts:", glob.glob('**/_cuda_inference*.so', recursive=True))
+PY
+
+
+---
+
+If you want, I can:
+
+give a single exact sequence to run right now (conda install build tools → build → run) as one paste-ready block, or
+
+if you prefer, run through likely build failure outputs and provide targeted fixes (I’ll need the exact traceback).
+
+
+Which do you want me to paste next — the single paste-ready block to run now, or do you want to try the build and paste any error here for me to debug?
+
