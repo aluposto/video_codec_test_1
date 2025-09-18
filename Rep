@@ -1,149 +1,198 @@
-Nice — you’re already in the right place. Below I’ll give a concise, copy-paste set of notebook cells and shell commands you can run from inside your Jupyter session (no sudo required) to build DCVC native extensions, run a quick test, and handle the most common failure modes. I’ll assume your kernel is already using the dcvc_rt_env conda env (if not, I also show exactly how to force running commands inside it).
+Nice — below are copy-paste-ready Jupyter notebook cells tailored for your dcvc_rt_env (Python 3.12). Paste and run them in order. I assume your notebook kernel is already using dcvc_rt_env. If it isn’t, replace python/pip lines with conda run -n dcvc_rt_env python / conda run -n dcvc_rt_env pip.
 
 
 ---
 
-1) Quick checks (run these first)
+Cell 1 — Quick environment & GPU sanity checks
 
-Paste into one notebook cell and run:
+# Cell 1: environment checks
+import os, sys, subprocess
 
-# confirm conda env and python
-which python
-python --version
-python -c "import torch; print('torch', torch.__version__, 'cuda', torch.version.cuda)"
-# check GPU drivers / cuda availability
-python -c "import torch; print('cuda_available', torch.cuda.is_available(), 'n_gpus', torch.cuda.device_count())"
+print("python:", sys.executable)
+print("python version:", sys.version.splitlines()[0])
 
-# (optional) check system CUDA and driver if nvcc is available
-which nvcc || echo "nvcc not found (that's okay if using driver-only)"
-nvidia-smi || echo "nvidia-smi not found or no GPU"
-
-If these print sensible info (python pointing to .../envs/dcvc_rt_env/bin/python, torch imports, and cuda shows 12.6 or None), proceed.
-
-
----
-
-2) Ensure build tools are in your conda env
-
-If you haven't installed cmake, g++, and ninja into the environment, add them now (no sudo):
-
-# Run inside your env — this runs conda in your current session; safe if env is active.
-conda install -y -n dcvc_rt_env -c conda-forge cmake ninja gxx_linux-64
-
-If your notebook process is already using dcvc_rt_env python, you can also run:
-
-# make sure these binaries are visible to the current kernel session
-which cmake || echo "cmake not on PATH"
-cmake --version || true
-which g++ || echo "g++ not on PATH"
-g++ --version || true
-which ninja || echo "ninja not on PATH"
-ninja --version || true
-
-
----
-
-3) Build the native extensions (repo root)
-
-From the repository root (where setup.py is located), run:
-
-# Option A: build in-place
-python setup.py build_ext --inplace
-
-# If you prefer editable install:
-pip install -v -e .
-
-Notes:
-
-Watch the output for compiler errors (missing headers, symbol errors). Copy the full traceback if something fails.
-
-If the build completes, you should see compiled modules (e.g. _cuda_inference.*.so) somewhere under src/ or build/.
-
-
-
----
-
-4) Run the test script (example)
-
-After a successful build, run:
-
-# adjust paths as needed
-python test_video.py --input path/to/input.mp4 --output path/to/out.mp4 --model_path checkpoints/dcvc.pth.tar
-
-If your notebook kernel is not the same env, run via conda run:
-
-conda run -n dcvc_rt_env python test_video.py --input path/to/input.mp4 --output path/to/out.mp4 --model_path checkpoints/dcvc.pth.tar
-
-
----
-
-5) If build fails — quick fallback stub (lets code run on CPU)
-
-If python setup.py ... fails and you need to proceed for quick testing, add a tiny fallback that avoids the compiled extension import error.
-
-Create or replace src/layers/cuda_inference.py with:
-
-# src/layers/cuda_inference.py
+# torch info
 try:
-    # compiled extension (preferred)
+    import torch
+    print("torch:", torch.__version__, "cuda:", torch.version.cuda)
+    print("cuda_available:", torch.cuda.is_available(), "gpu_count:", torch.cuda.device_count())
+except Exception as e:
+    print("torch import failed:", repr(e))
+
+# check conda env name (best-effort)
+env = os.environ.get("CONDA_DEFAULT_ENV","(unknown)")
+print("conda env:", env)
+
+# quick binaries
+for cmd in ("cmake","g++","ninja","nvcc","nvidia-smi"):
+    try:
+        out = subprocess.check_output(["which", cmd], stderr=subprocess.STDOUT).decode().strip()
+    except Exception:
+        out = "(not found)"
+    print(f"{cmd}: {out}")
+
+
+---
+
+Cell 2 — Install build tools into the conda env (no sudo)
+Run this cell to ensure cmake, ninja, and g++ are available. It uses conda and is safe inside the env.
+
+# Cell 2: install build tools into the current conda env
+import os, subprocess, sys
+
+print("Installing build tools into current conda env (no sudo)...")
+subprocess.run(["conda","install","-y","-n", os.environ.get("CONDA_DEFAULT_ENV","dcvc_rt_env"),
+                "-c","conda-forge","cmake","ninja","gxx_linux-64"], check=False)
+
+# verify
+for cmd in ("cmake","g++","ninja"):
+    try:
+        print(cmd, subprocess.check_output([cmd,"--version"], stderr=subprocess.STDOUT, text=True).splitlines()[0])
+    except Exception as e:
+        print(cmd, "not found or error:", e)
+
+
+---
+
+Cell 3 — Build native extensions in-place (capture output to help debugging)
+Run from the repository root where setup.py is located. This cell saves output to build_output.log.
+
+# Cell 3: build native extensions and capture logs
+import subprocess, sys, os, time
+logfile = "build_output.log"
+print("Running build... logs ->", logfile)
+
+with open(logfile, "w") as f:
+    proc = subprocess.Popen([sys.executable, "setup.py", "build_ext", "--inplace"],
+                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    for line in proc.stdout:
+        print(line, end="")   # show live
+        f.write(line)
+    proc.wait()
+    print("BUILD RETURN CODE:", proc.returncode)
+    f.write(f"\nRETURN_CODE: {proc.returncode}\n")
+
+if proc.returncode != 0:
+    print("\nBuild failed. The build log is saved in", logfile)
+else:
+    print("\nBuild finished (return code 0).")
+
+
+---
+
+Cell 4 — If build fails: create a CPU fallback for src/layers/cuda_inference.py
+This writes a safe fallback that will let the Python import succeed (slow CPU behavior). Run it if the previous cell's return code was non-zero.
+
+# Cell 4: create CPU fallback for src/layers/cuda_inference.py (only if build failed)
+from pathlib import Path
+p = Path("src/layers")
+p.mkdir(parents=True, exist_ok=True)
+fallback = p / "cuda_inference.py"
+fallback_code = r'''
+# Pure-Python fallback for tests when compiled extension isn't available.
+try:
     from ._cuda_inference import replicate_pad
 except Exception:
-    # fallback using PyTorch CPU implementation (slow but functional)
     import torch
     import torch.nn.functional as F
     def replicate_pad(x, pad):
+        # pad is expected in torch.nn.functional.pad ordering; use replicate mode
         return F.pad(x, pad, mode='replicate')
-
-Then re-run the test script with the same command in step 4. This is only a CPU fallback — it's slower and may not produce identical performance, but it often lets you validate the rest of the pipeline.
-
-
----
-
-6) Common errors & remedies (what to paste back to me if things still break)
-
-If you hit errors, copy the full error output and paste it here. Useful errors include:
-
-Compiler missing / not found: g++: command not found — fix by conda install -c conda-forge gxx_linux-64 (we already included that).
-
-Missing header (e.g., Python.h, cuda.h): will show which package is missing; often python-dev or cudatoolkit-dev is needed — for headers in conda env: conda install -c conda-forge python-dev (rare) or ensure CUDA toolkit headers are available for your CUDA version.
-
-Torch header mismatch: errors mentioning ATen or caffe2 — usually caused by mismatch between the PyTorch version used to compile and runtime. Reinstall the same torch wheel in the env and rebuild.
-
-CUDA/driver mismatch: if torch.cuda.is_available() is False but nvidia-smi exists, confirm your driver supports CUDA 12.6 or match PyTorch wheel to installed driver/CUDA. If needed, try CPU-only torch wheel.
-
-Undefined symbols at import time of compiled .so: usually due to incompatible compiler or ABI — try using the same compilers in conda (we used gxx_linux-64) and rebuild.
-
-
-If any of the above errors occur, paste the entire traceback into the chat and I’ll point to the exact fix and exact conda/pip command to run.
+'''
+fallback.write_text(fallback_code)
+print("Wrote fallback to", fallback.resolve())
 
 
 ---
 
-7) Quick verification after build
+Cell 5 — Verify compiled artifacts and attempt to import module
 
-To confirm the compiled module loads:
+# Cell 5: list compiled artifacts and try import
+import glob, importlib, sys
+so_files = glob.glob("**/_cuda_inference*.so", recursive=True) + glob.glob("**/_cuda_inference*.pyd", recursive=True)
+print("Found compiled artifacts:", so_files)
 
-python - <<'PY'
-import importlib, pkgutil, sys
 try:
-    import src.layers.cuda_inference as ci
-    print("Loaded cuda_inference:", ci)
+    import src.layers.cuda_inference as cif
+    print("Imported src.layers.cuda_inference ->", cif)
+    if hasattr(cif, "replicate_pad"):
+        print("replicate_pad available:", cif.replicate_pad)
 except Exception as e:
-    print("Failed to import compiled module:", e)
-# list compiled extensions in repo
-import glob
-print("Compiled artifacts:", glob.glob('**/_cuda_inference*.so', recursive=True))
-PY
+    print("Import failed:", repr(e))
+    # show last few lines of build log if present
+    import os
+    log = "build_output.log"
+    if os.path.exists(log):
+        print("\nLast 200 lines of build_output.log:")
+        with open(log,"r") as f:
+            lines = f.read().splitlines()
+            for L in lines[-200:]:
+                print(L)
 
 
 ---
 
-If you want, I can:
+Cell 6 — Run the test script (small sample recommended)
+Use a small test video to avoid long runs. Replace path/to/input.mp4 and model_path with your files. If your kernel is in the env, run python directly; otherwise prefix with conda run -n dcvc_rt_env.
 
-give a single exact sequence to run right now (conda install build tools → build → run) as one paste-ready block, or
+# Cell 6: run test_video.py (adjust paths)
+import subprocess, sys, shlex, os
 
-if you prefer, run through likely build failure outputs and provide targeted fixes (I’ll need the exact traceback).
+input_video = "small_sample.mp4"   # <-- replace with a small video you have
+output_video = "out_test.mp4"
+model_path = "checkpoints/dcvc.pth.tar"  # <-- replace if needed
+
+cmd = [sys.executable, "test_video.py",
+       "--input", input_video,
+       "--output", output_video,
+       "--model_path", model_path]
+
+print("Running:", " ".join(shlex.quote(c) for c in cmd))
+proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+for line in proc.stdout:
+    print(line, end="")
+proc.wait()
+print("Test script exit code:", proc.returncode)
 
 
-Which do you want me to paste next — the single paste-ready block to run now, or do you want to try the build and paste any error here for me to debug?
+---
+
+Cell 7 — If things still fail: show the build log and environment details (paste these if you want me to debug)
+
+# Cell 7: collect helpful debugging info
+import os, sys, textwrap, glob
+info = {}
+info['python'] = sys.executable
+info['python_version'] = sys.version
+try:
+    import torch
+    info['torch'] = torch.__version__
+    info['torch_cuda'] = torch.version.cuda
+    info['cuda_available'] = torch.cuda.is_available()
+except Exception as e:
+    info['torch_import_error'] = repr(e)
+
+info['so_files'] = glob.glob("**/_cuda_inference*.so", recursive=True) + glob.glob("**/*.so", recursive=True)[:20]
+info['cwd'] = os.getcwd()
+info['env'] = os.environ.get("CONDA_DEFAULT_ENV","(unknown)")
+
+print("ENV INFO:")
+for k,v in info.items():
+    print(k, ":", v)
+
+logfile = "build_output.log"
+if os.path.exists(logfile):
+    print("\n=== build_output.log (last 400 lines) ===")
+    with open(logfile,"r") as f:
+        lines = f.read().splitlines()
+        for L in lines[-400:]:
+            print(L)
+else:
+    print("\nNo build_output.log found.")
+
+
+---
+
+Run the cells in order. If the build succeeds, you can skip Cell 4 (fallback). If any step fails, copy the output of Cell 7 (especially the last lines of build_output.log and the traceback) and paste it here — I’ll give an exact fix (specific conda package or a small code change).
+
 
