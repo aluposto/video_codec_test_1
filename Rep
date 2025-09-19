@@ -1,1 +1,211 @@
-ggfx
+# Overwrite src/python/mlcodec_rans_py.py with a corrected, robust pure-Python rANS module
+from pathlib import Path
+p = Path("src/python")
+p.mkdir(parents=True, exist_ok=True)
+file_path = p / "mlcodec_rans_py.py"
+
+file_text = r'''
+# Robust pure-Python implementation of rANS encode/decode for testing.
+# Intended as a functional fallback; not optimized for speed.
+
+from typing import List
+import numpy as np
+
+SCALE_BITS = 16
+RANS_SHIFT_BITS = 23
+RANS_BYTE_L = (1 << RANS_SHIFT_BITS)
+ENC_RENORM_SHIFT_BITS = RANS_SHIFT_BITS - SCALE_BITS + 8
+DEC_MASK = ((1 << SCALE_BITS) - 1)
+
+bypass_precision = 2
+max_bypass_val = (1 << bypass_precision) - 1
+
+def RansEncInit():
+    return RANS_BYTE_L
+
+def RansEncPut(r, out_buf, start, freq):
+    x_max = freq << ENC_RENORM_SHIFT_BITS
+    while r >= x_max:
+        out_buf.append(r & 0xff)
+        r >>= 8
+    r = ((r // freq) << SCALE_BITS) + (r % freq) + start
+    return r
+
+def RansEncFlush(r, out_buf):
+    out_buf.append((r >> 0) & 0xff)
+    out_buf.append((r >> 8) & 0xff)
+    out_buf.append((r >> 16) & 0xff)
+    out_buf.append((r >> 24) & 0xff)
+
+def RansDecInit(buf, ptr_index=0):
+    # read 4 bytes little-endian
+    r = (buf[ptr_index] | (buf[ptr_index+1] << 8) | (buf[ptr_index+2] << 16) | (buf[ptr_index+3] << 24))
+    return r, ptr_index + 4
+
+def RansDecGet(r):
+    return r & DEC_MASK
+
+def RansDecAdvance(r, buf, ptr_index, start, freq):
+    r = freq * (r >> SCALE_BITS) + (r & DEC_MASK) - start
+    while r < RANS_BYTE_L:
+        r = (r << 8) | buf[ptr_index]
+        ptr_index += 1
+    return r, ptr_index
+
+def pmf_to_quantized_cdf(pmf: List[float], precision: int):
+    # port of the same algorithm used in C++
+    cdf = [0] * (len(pmf) + 1)
+    for i, p in enumerate(pmf):
+        cdf[i+1] = int(round(p * (1 << precision) + 0.5))
+    total = sum(cdf)
+    if total == 0:
+        total = 1
+    for i in range(len(cdf)):
+        cdf[i] = int(((1 << precision) * cdf[i]) / total)
+    for i in range(1, len(cdf)):
+        cdf[i] += cdf[i-1]
+    cdf[-1] = 1 << precision
+
+    # repair zeros by stealing frequency from smallest freq > 1
+    n = len(cdf) - 1
+    for i in range(n):
+        if cdf[i] == cdf[i+1]:
+            best_freq = 0xffffffff
+            best_j = -1
+            for j in range(n):
+                freq = cdf[j+1] - cdf[j]
+                if freq > 1 and freq < best_freq:
+                    best_freq = freq
+                    best_j = j
+            assert best_j != -1
+            if best_j < i:
+                for j in range(best_j+1, i+1):
+                    cdf[j] -= 1
+            else:
+                for j in range(i+1, best_j+1):
+                    cdf[j] += 1
+    return cdf
+
+class RansEncoderLib:
+    def __init__(self):
+        # _ransSymbols: list per cdf_group -> list per cdf_idx -> tuple(start, range)
+        self._stream = bytearray()
+        self._ransSymbols = []          # e.g. [ [ (s0,r0), (s1,r1), ... ],  ... ]
+        self._cdfs_sizes = []
+        self._offsets = []
+        self._pending = []              # pending tasks
+
+    def add_cdf(self, cdfs: List[List[int]], cdfs_sizes: List[int], offsets: List[int]):
+        # Ensure cdfs is list of lists; convert to (start,range) tuples per cdf entry
+        grp = []
+        for cdf in cdfs:
+            sym = []
+            for j in range(len(cdf)-1):
+                start = int(cdf[j])
+                rng = int(cdf[j+1] - cdf[j])
+                sym.append((start, rng))
+            grp.append(sym)
+        self._ransSymbols.append(grp)
+        self._cdfs_sizes.append([int(x) for x in cdfs_sizes])
+        self._offsets.append([int(x) for x in offsets])
+        return len(self._ransSymbols) - 1
+
+    def empty_cdf_buffer(self):
+        self._ransSymbols.clear()
+        self._cdfs_sizes.clear()
+        self._offsets.clear()
+
+    def encode_y(self, symbols, cdf_group_index):
+        # accept numpy array or list
+        arr = [int(x) for x in np.asarray(symbols).ravel().tolist()]
+        self._pending.append(("y", arr, int(cdf_group_index)))
+
+    def encode_z(self, symbols, cdf_group_index, start_offset, per_channel_size):
+        arr = [int(x) for x in np.asarray(symbols).ravel().tolist()]
+        self._pending.append(("z", arr, int(cdf_group_index), int(start_offset), int(per_channel_size)))
+
+    def flush(self):
+        out = []
+        r = RansEncInit()
+        # process pending in reverse order (C++ encodes reversed)
+        for task in reversed(self._pending):
+            if task[0] == "y":
+                _, symbols, group = task
+                rans_sym_grp = self._ransSymbols[group]
+                for combined in reversed(symbols):
+                    cdf_idx = combined & 0xff
+                    s = combined >> 8
+                    entry = rans_sym_grp[cdf_idx]
+                    start = int(entry[0])
+                    rng = int(entry[1])
+                    r = RansEncPut(r, out, start, rng)
+            elif task[0] == "z":
+                _, symbols, group, start_offset, per_channel = task
+                rans_sym_grp = self._ransSymbols[group]
+                for i in range(len(symbols)-1, -1, -1):
+                    cdf_idx = i // per_channel + start_offset
+                    entry = rans_sym_grp[cdf_idx]
+                    start = int(entry[0])
+                    rng = int(entry[1])
+                    r = RansEncPut(r, out, start, rng)
+        RansEncFlush(r, out)
+        # reverse produced bytes to match C++ order
+        self._stream = bytearray(reversed(out))
+        self._pending.clear()
+
+    def get_encoded_stream(self):
+        return bytes(self._stream)
+
+    def reset(self):
+        self._stream = bytearray()
+        self._pending.clear()
+
+class RansDecoderLib:
+    def __init__(self):
+        self._stream = bytearray()
+        self._ptr = 0
+        self._rans = 0
+        self._cdfs = []          # list per group: list of cdfs (each cdf is a list of ints)
+        self._cdfs_sizes = []
+        self._offsets = []
+        self._decoded = []
+
+    def set_stream(self, encoded: bytes):
+        self._stream = bytearray(encoded)
+        self._rans, self._ptr = RansDecInit(self._stream, 0)
+
+    def add_cdf(self, cdfs, sizes, offsets):
+        self._cdfs.append([list(map(int, row)) for row in cdfs])
+        self._cdfs_sizes.append([int(x) for x in sizes])
+        self._offsets.append([int(x) for x in offsets])
+        return len(self._cdfs) - 1
+
+    def empty_cdf_buffer(self):
+        self._cdfs.clear()
+        self._cdfs_sizes.clear()
+        self._offsets.clear()
+
+    def decode_y(self, indexes, cdf_group_index):
+        idxs = [int(x) for x in np.asarray(indexes).ravel().tolist()]
+        cdfs = self._cdfs[cdf_group_index]
+        offsets = self._offsets[cdf_group_index]
+        decoded = []
+        for idx in idxs:
+            cdf = cdfs[idx]
+            cum = RansDecGet(self._rans)
+            s = 1
+            while s < len(cdf) and cdf[s] <= cum:
+                s += 1
+            s -= 1
+            start = int(cdf[s])
+            rng = int(cdf[s+1] - cdf[s])
+            self._rans, self._ptr = RansDecAdvance(self._rans, self._stream, self._ptr, start, rng)
+            decoded.append(int(s + offsets[idx]))
+        self._decoded = decoded
+
+    def get_decoded_tensor(self):
+        return np.array(self._decoded, dtype=np.int8)
+'''.lstrip()
+
+file_path.write_text(file_text)
+print("Rewrote:", file_path)
