@@ -2,7 +2,7 @@ Backend in use: py
 cdf index: 0
 ---------------------------------------------------------------------------
 ValueError                                Traceback (most recent call last)
-Cell In[10], line 21
+Cell In[12], line 21
      19 symbols = np.array([ (0 & 0xff) | (1 << 8), (0 & 0xff) | (2 << 8) ], dtype=np.int16)
      20 enc.encode_y(symbols, idx)
 ---> 21 enc.flush()
