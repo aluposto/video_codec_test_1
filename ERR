@@ -1,23 +1,94 @@
-Backend in use: py
-cdf index: 0
----------------------------------------------------------------------------
-TypeError                                 Traceback (most recent call last)
-Cell In[15], line 22
-     20 symbols = np.array([ (0 & 0xff) | (1 << 8), (0 & 0xff) | (2 << 8) ], dtype=np.int16)
-     21 enc.encode_y(symbols, idx)
----> 22 enc.flush()
-     23 stream = enc.get_encoded_stream()
-     24 print("Encoded stream len:", len(stream))
+You're almost there — the file was updated on disk but your notebook still had the old modules loaded in memory, so the running classes still used the previous (bad) flush. We can fix that without restarting the kernel by forcing Python to unload the old modules and re-import the updated files.
 
-File ~/dcvc/DCVC_fresh/src/python/codec_loader.py:26, in RansEncoder.flush(self)
-     25 def flush(self):
----> 26     self._lib.flush()
+Run these three short cells (one at a time) in your notebook from the repo root /home/work/dcvc/DCVC_fresh.
 
-File ~/dcvc/DCVC_fresh/src/python/mlcodec_rans_py.py:132, in RansEncoderLib.flush(self)
-    130 s = combined >> 8
-    131 entry = rans_sym_grp[cdf_idx]
---> 132 start = int(entry[0])
-    133 rng = int(entry[1])
-    134 r = RansEncPut(r, out, start, rng)
 
-TypeError: int() argument must be a string, a bytes-like object or a real number, not 'tuple'
+---
+
+Cell 1 — quick check: show the new flush in the file (sanity)
+This ensures the file on disk contains the corrected flush implementation.
+
+# Cell 1 — inspect the file to confirm new flush() exists
+from pathlib import Path
+p = Path("src/python/mlcodec_rans_py.py")
+assert p.exists(), "File src/python/mlcodec_rans_py.py not found"
+txt = p.read_text()
+print("Showing lines 1..220 of src/python/mlcodec_rans_py.py\n")
+for i, line in enumerate(txt.splitlines(), start=1):
+    if i > 220:
+        break
+    print(f"{i:03d}: {line}")
+# quick scan for the flush signature
+print("\n---\nflush() present?", "def flush(self):" in txt)
+
+If you see the updated flush code in the printed lines (the block that uses entry = rans_sym_grp[cdf_idx] and start = int(entry[0])), proceed to Cell 2. If not, tell me and we'll re-write the file.
+
+
+---
+
+Cell 2 — forcibly unload old modules and re-import the loader
+This removes any previously imported copies and reloads fresh code from disk.
+
+# Cell 2 — unload stale modules and re-import loader
+import sys
+import importlib
+
+mods_to_remove = [m for m in list(sys.modules.keys()) if m.startswith("src.python") or m in ("mlcodec_rans_py","codec_loader","MLCodec_extensions_cpp")]
+print("Modules to remove (preview):", mods_to_remove)
+
+for m in mods_to_remove:
+    sys.modules.pop(m, None)
+
+# Now import the loader fresh
+loader = importlib.import_module("src.python.codec_loader")
+importlib.reload(loader)  # ensure reloaded
+print("Imported loader; BACKEND =", getattr(loader, "BACKEND", None))
+# expose for the next cell
+globals()["loader"] = loader
+
+You should see BACKEND = "py" printed (since compiled extension isn't installed). If you see an ImportError here, paste the traceback.
+
+
+---
+
+Cell 3 — re-run the smoke test using the freshly imported loader
+This is the same smoke test as before but now will use the freshly loaded pure-Python code.
+
+# Cell 3 — smoke test with fresh loader
+import numpy as np
+loader = globals().get("loader")
+assert loader is not None, "loader not imported; run previous cell"
+
+print("Backend in use:", loader.BACKEND)
+
+pmf = [0.2, 0.5, 0.3]
+precision = 12
+cdf = loader.pmf_to_quantized_cdf(pmf, precision)
+
+cdfs_arr = np.array([cdf], dtype=np.int32)
+cdfs_sizes = np.array([len(cdf)], dtype=np.int32)
+offsets = np.array([0], dtype=np.int32)
+
+enc = loader.RansEncoder()
+idx = enc.add_cdf(cdfs_arr, cdfs_sizes, offsets)
+print("cdf index:", idx)
+
+symbols = np.array([ (0 & 0xff) | (1 << 8), (0 & 0xff) | (2 << 8) ], dtype=np.int16)
+enc.encode_y(symbols, idx)
+enc.flush()
+stream = enc.get_encoded_stream()
+print("Encoded stream len:", len(stream))
+print("Encoded bytes:", np.asarray(stream, dtype=np.uint8).tolist())
+
+dec = loader.RansDecoder()
+dec.add_cdf(cdfs_arr, cdfs_sizes, offsets)
+dec.set_stream(stream)
+dec.decode_y(np.array([0,0], dtype=np.uint8), idx)
+out = dec.get_decoded_tensor()
+print("Decoded result:", out.tolist())
+
+
+---
+
+Run those three cells in order and paste the outputs (or any traceback) if anything fails. If it succeeds, we’ll have a working pure-Python fallback and can proceed to integrate it into DCVC or refine correctness/performance.
+
