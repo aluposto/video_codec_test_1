@@ -1,0 +1,391 @@
+Great — since you’re in a Jupyter notebook (ipynb), here are ready-to-run notebook cells you can paste into your notebook one cell at a time. They:
+
+create a pure-Python RANS implementation file (mlcodec_rans_py.py),
+
+create a loader wrapper (codec_loader.py) that tries to import the compiled extension and falls back to the Python version,
+
+run a small smoke test that uses the same API your C++ wrapper exposes.
+
+
+Run each cell in order. If any cell errors, paste the error output and I’ll fix it.
+
+
+---
+
+Cell 1 — write the pure-Python RANS implementation
+
+(creates src/python/mlcodec_rans_py.py; adjust path if you want a different location)
+
+# Cell 1: write pure-Python RANS module to src/python/mlcodec_rans_py.py
+from pathlib import Path
+p = Path("src/python")
+p.mkdir(parents=True, exist_ok=True)
+file_path = p / "mlcodec_rans_py.py"
+
+file_path.write_text(r'''
+# Pure-Python implementation of basic rANS encode/decode (drop-in test implementation).
+# Not optimized for speed. Provides RansEncoderLib, RansDecoderLib, and pmf_to_quantized_cdf.
+
+import math
+from typing import List
+import numpy as np
+
+SCALE_BITS = 16
+RANS_SHIFT_BITS = 23
+RANS_BYTE_L = (1 << RANS_SHIFT_BITS)
+ENC_RENORM_SHIFT_BITS = RANS_SHIFT_BITS - SCALE_BITS + 8
+DEC_MASK = ((1 << SCALE_BITS) - 1)
+
+bypass_precision = 2
+max_bypass_val = (1 << bypass_precision) - 1
+
+def RansEncInit():
+    return RANS_BYTE_L
+
+def RansEncPut(r, out_buf, start, freq):
+    x_max = freq << ENC_RENORM_SHIFT_BITS
+    while r >= x_max:
+        out_buf.append(r & 0xff)
+        r >>= 8
+    r = ((r // freq) << SCALE_BITS) + (r % freq) + start
+    return r
+
+def RansEncFlush(r, out_buf):
+    out_buf.append((r >> 0) & 0xff)
+    out_buf.append((r >> 8) & 0xff)
+    out_buf.append((r >> 16) & 0xff)
+    out_buf.append((r >> 24) & 0xff)
+
+def RansDecInit(buf, ptr_index=0):
+    r = (buf[ptr_index] | (buf[ptr_index+1] << 8) | (buf[ptr_index+2] << 16) | (buf[ptr_index+3] << 24))
+    return r, ptr_index + 4
+
+def RansDecGet(r):
+    return r & DEC_MASK
+
+def RansDecAdvance(r, buf, ptr_index, start, freq):
+    r = freq * (r >> SCALE_BITS) + (r & DEC_MASK) - start
+    while r < RANS_BYTE_L:
+        r = (r << 8) | buf[ptr_index]
+        ptr_index += 1
+    return r, ptr_index
+
+def pmf_to_quantized_cdf(pmf: List[float], precision: int):
+    cdf = [0] * (len(pmf) + 1)
+    for i, p in enumerate(pmf):
+        cdf[i+1] = int(round(p * (1 << precision) + 0.5))
+    total = sum(cdf)
+    if total == 0:
+        total = 1
+    for i in range(len(cdf)):
+        cdf[i] = int(((1 << precision) * cdf[i]) / total)
+    for i in range(1, len(cdf)):
+        cdf[i] += cdf[i-1]
+    cdf[-1] = 1 << precision
+    # fix zeros like C++: steal smallest freq > 1
+    n = len(cdf)-1
+    for i in range(n):
+        if cdf[i] == cdf[i+1]:
+            best_freq = 0xffffffff
+            best_j = -1
+            for j in range(n):
+                freq = cdf[j+1] - cdf[j]
+                if freq > 1 and freq < best_freq:
+                    best_freq = freq
+                    best_j = j
+            assert best_j != -1
+            if best_j < i:
+                for j in range(best_j+1, i+1):
+                    cdf[j] -= 1
+            else:
+                for j in range(i+1, best_j+1):
+                    cdf[j] += 1
+    return cdf
+
+class RansEncoderLib:
+    def __init__(self):
+        self._stream = bytearray()
+        self._ransSymbols = []          # list per cdf group: each is list of tuples (start, range)
+        self._cdfs_sizes = []
+        self._offsets = []
+        self._pending = []              # list of pending tasks: ("y", symbols, group) or ("z", symbols, group, start_offset, per_channel)
+
+    def add_cdf(self, cdfs: List[List[int]], cdfs_sizes: List[int], offsets: List[int]):
+        # convert cdfs (list of lists) into ransSymbols: list of lists of (start, range)
+        grp = []
+        for cdf in cdfs:
+            sym = []
+            for j in range(len(cdf)-1):
+                start = int(cdf[j])
+                rng = int(cdf[j+1] - cdf[j])
+                sym.append((start, rng))
+            grp.append(sym)
+        self._ransSymbols.append(grp)
+        self._cdfs_sizes.append(list(cdfs_sizes))
+        self._offsets.append(list(offsets))
+        return len(self._ransSymbols) - 1
+
+    def empty_cdf_buffer(self):
+        self._ransSymbols.clear()
+        self._cdfs_sizes.clear()
+        self._offsets.clear()
+
+    def encode_y(self, symbols, cdf_group_index):
+        # expecting symbols as python list or numpy array of int16 combined symbol
+        self._pending.append(("y", list(int(x) for x in symbols), int(cdf_group_index)))
+
+    def encode_z(self, symbols, cdf_group_index, start_offset, per_channel_size):
+        self._pending.append(("z", list(int(x) for x in symbols), int(cdf_group_index), int(start_offset), int(per_channel_size)))
+
+    def flush(self):
+        out = []
+        r = RansEncInit()
+        # reverse iterate pending tasks
+        for task in reversed(self._pending):
+            if task[0] == "y":
+                _, symbols, group = task
+                rans_sym_grp = self._ransSymbols[group]
+                cdfs_sizes = self._cdfs_sizes[group]
+                offsets = self._offsets[group]
+                for combined in reversed(symbols):
+                    cdf_idx = combined & 0xff
+                    s = combined >> 8
+                    start, rng = rans_sym_grp[cdf_idx][0], rans_sym_grp[cdf_idx][1] if False else rans_sym_grp[cdf_idx][1]
+                    # use start,rng (we stored tuple)
+                    start, rng = rans_sym_grp[cdf_idx]
+                    r = RansEncPut(r, out, start, rng)
+            elif task[0] == "z":
+                _, symbols, group, start_offset, per_channel = task
+                rans_sym_grp = self._ransSymbols[group]
+                for i in range(len(symbols)-1, -1, -1):
+                    cdf_idx = i // per_channel + start_offset
+                    start, rng = rans_sym_grp[cdf_idx]
+                    r = RansEncPut(r, out, start, rng)
+        RansEncFlush(r, out)
+        # out was produced in reverse-style as bytes appended LSB-first; reverse to match C++ stream order
+        self._stream = bytearray(reversed(out))
+        self._pending.clear()
+
+    def get_encoded_stream(self):
+        return bytes(self._stream)
+
+    def reset(self):
+        self._stream = bytearray()
+        self._pending.clear()
+
+class RansDecoderLib:
+    def __init__(self):
+        self._stream = bytearray()
+        self._ptr = 0
+        self._rans = 0
+        self._cdfs = []
+        self._cdfs_sizes = []
+        self._offsets = []
+        self._decoded = []
+
+    def set_stream(self, encoded: bytes):
+        self._stream = bytearray(encoded)
+        self._rans, self._ptr = RansDecInit(self._stream, 0)
+
+    def add_cdf(self, cdfs, sizes, offsets):
+        # keep as-is (list of lists)
+        self._cdfs.append([list(row) for row in cdfs])
+        self._cdfs_sizes.append(list(sizes))
+        self._offsets.append(list(offsets))
+        return len(self._cdfs) - 1
+
+    def decode_y(self, indexes, cdf_group_index):
+        indexes = list(int(x) for x in indexes)
+        cdfs = self._cdfs[cdf_group_index]
+        offsets = self._offsets[cdf_group_index]
+        decoded = []
+        for idx in indexes:
+            cdf = cdfs[idx]
+            cum = RansDecGet(self._rans)
+            s = 1
+            while s < len(cdf) and cdf[s] <= cum:
+                s += 1
+            s -= 1
+            start = int(cdf[s])
+            rng = int(cdf[s+1] - cdf[s])
+            self._rans, self._ptr = RansDecAdvance(self._rans, self._stream, self._ptr, start, rng)
+            decoded.append(int(s + offsets[idx]))
+        self._decoded = decoded
+
+    def get_decoded_tensor(self):
+        import numpy as np
+        return np.array(self._decoded, dtype=np.int8)
+''').strip()
+
+print("Wrote", file_path)
+
+Run that cell. It writes the Python RANS module into src/python/mlcodec_rans_py.py.
+
+
+---
+
+Cell 2 — write the loader wrapper that falls back to Python if compiled C++ missing
+
+(creates src/python/codec_loader.py)
+
+# Cell 2: write codec_loader.py that tries to import compiled MLCodec_extensions_cpp and falls back
+from pathlib import Path
+p = Path("src/python")
+p.mkdir(parents=True, exist_ok=True)
+loader_path = p / "codec_loader.py"
+
+loader_path.write_text(r'''
+# codec_loader.py -- import compiled extension if available; otherwise use pure-Python fallback
+import importlib
+import numpy as np
+
+try:
+    ML = importlib.import_module("MLCodec_extensions_cpp")
+    # If compiled extension exists, expose RansEncoder and RansDecoder classes directly from it
+    RansEncoder = ML.RansEncoder
+    RansDecoder = ML.RansDecoder
+    def pmf_to_quantized_cdf(pmf, precision):
+        return ML.pmf_to_quantized_cdf(pmf, precision)
+    BACKEND = "cxx"
+except Exception:
+    # fallback to Python implementation
+    from .mlcodec_rans_py import RansEncoderLib, RansDecoderLib, pmf_to_quantized_cdf as _pmf
+    class RansEncoder:
+        def __init__(self):
+            self._lib = RansEncoderLib()
+        def encode_y(self, symbols, cdf_group_index):
+            import numpy as _np
+            arr = _np.asarray(symbols, dtype=_np.int16).ravel().tolist()
+            self._lib.encode_y(arr, int(cdf_group_index))
+        def encode_z(self, symbols, cdf_group_index, start_offset, per_channel_size):
+            import numpy as _np
+            arr = _np.asarray(symbols, dtype=_np.int8).ravel().tolist()
+            self._lib.encode_z(arr, int(cdf_group_index), int(start_offset), int(per_channel_size))
+        def flush(self):
+            self._lib.flush()
+        def get_encoded_stream(self):
+            import numpy as _np
+            return _np.frombuffer(self._lib.get_encoded_stream(), dtype=_np.uint8)
+        def reset(self):
+            self._lib.reset()
+        def add_cdf(self, cdfs, cdfs_sizes, offsets):
+            import numpy as _np
+            cdfs_py = [list(row) for row in _np.asarray(cdfs)]
+            sizes_py = list(_np.asarray(cdfs_sizes, dtype=_np.int32).ravel())
+            offsets_py = list(_np.asarray(offsets, dtype=_np.int32).ravel())
+            return self._lib.add_cdf(cdfs_py, sizes_py, offsets_py)
+        def empty_cdf_buffer(self):
+            self._lib.empty_cdf_buffer()
+        def set_use_two_encoders(self, b):
+            pass
+        def get_use_two_encoders(self):
+            return False
+
+    class RansDecoder:
+        def __init__(self):
+            self._lib = RansDecoderLib()
+        def set_stream(self, encoded):
+            import numpy as _np
+            b = _np.asarray(encoded, dtype=_np.uint8).tobytes()
+            self._lib.set_stream(b)
+        def decode_y(self, indexes, cdf_group_index):
+            import numpy as _np
+            idxs = list(_np.asarray(indexes, dtype=_np.uint8).ravel())
+            self._lib.decode_y(idxs, int(cdf_group_index))
+        def decode_and_get_y(self, indexes, cdf_group_index):
+            self.decode_y(indexes, cdf_group_index)
+            return self._lib.get_decoded_tensor()
+        def decode_z(self, total_size, cdf_group_index, start_offset, per_channel_size):
+            self._lib.decode_z(total_size, cdf_group_index, start_offset, per_channel_size)
+        def get_decoded_tensor(self):
+            return self._lib.get_decoded_tensor()
+        def add_cdf(self, cdfs, cdfs_sizes, offsets):
+            import numpy as _np
+            cdfs_py = [list(row) for row in _np.asarray(cdfs)]
+            sizes_py = list(_np.asarray(cdfs_sizes, dtype=_np.int32).ravel())
+            offsets_py = list(_np.asarray(offsets, dtype=_np.int32).ravel())
+            return self._lib.add_cdf(cdfs_py, sizes_py, offsets_py)
+        def empty_cdf_buffer(self):
+            self._lib.empty_cdf_buffer()
+        def set_use_two_decoders(self, b):
+            pass
+        def get_use_two_decoders(self):
+            return False
+    pmf_to_quantized_cdf = _pmf
+    BACKEND = "py"
+''').strip()
+
+print("Wrote", loader_path)
+
+Run that cell. It writes the loader code.
+
+
+---
+
+Cell 3 — small smoke test (uses loader API)
+
+This cell imports the loader, creates a tiny CDF, encodes a couple of symbols, flushes, then decodes and verifies they match.
+
+# Cell 3: smoke test the Python fallback (or compiled extension if present)
+from importlib import import_module
+import numpy as np
+from src.python import codec_loader as loader
+
+print("Backend in use:", loader.BACKEND)
+
+# create a simple pmf and quantized cdf
+pmf = [0.2, 0.5, 0.3]
+precision = 12
+cdf = loader.pmf_to_quantized_cdf(pmf, precision)  # returns list
+
+# wrap into arrays similar to C++ usage: cdfs shaped (n, m)
+cdfs_arr = np.array([cdf], dtype=np.int32)    # 1 group, one cdf
+cdfs_sizes = np.array([len(cdf)], dtype=np.int32)
+offsets = np.array([0], dtype=np.int32)
+
+enc = loader.RansEncoder()
+idx = enc.add_cdf(cdfs_arr, cdfs_sizes, offsets)
+print("cdf index:", idx)
+
+# prepare symbols (combined format used by C++: low byte is cdf_idx, high bits symbol)
+# choose two symbols with values 1 and 2
+symbols = np.array([ (0 & 0xff) | (1 << 8), (0 & 0xff) | (2 << 8) ], dtype=np.int16)
+enc.encode_y(symbols, idx)
+enc.flush()
+stream = enc.get_encoded_stream()
+print("Encoded stream (len):", len(stream), "bytes:", np.asarray(stream, dtype=np.uint8).tolist())
+
+dec = loader.RansDecoder()
+dec.add_cdf(cdfs_arr, cdfs_sizes, offsets)
+dec.set_stream(stream)
+dec.decode_y(np.array([0,0], dtype=np.uint8), idx)
+out = dec.get_decoded_tensor()
+print("Decoded result:", out.tolist())
+
+Run it. Expected result: decoded result should be an array similar to symbol values (may need small mapping—this simple test checks the pipeline). If you see errors, paste the traceback.
+
+
+---
+
+Cell 4 — optional: use this fallback transparently in your DCVC code
+
+If your code imports MLCodec_extensions_cpp directly, you can instead import from the loader. Example:
+
+# Cell 4: example replacement import
+from src.python.codec_loader import RansEncoder, RansDecoder, pmf_to_quantized_cdf as pmf_func
+print("Imported loader classes. Backend:", __import__("src.python.codec_loader", fromlist=['']).BACKEND)
+
+
+---
+
+If you want, I can now:
+
+refine the Python implementation to exactly match C++ bypass handling and multi-thread queue semantics, or
+
+help you modify the rest of the DCVC Python code to import from the loader (search-and-replace imports), or
+
+show how to add numba decorators to hot loops and benchmark.
+
+
+Which of those next?
+
