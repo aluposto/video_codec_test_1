@@ -1,23 +1,23 @@
 Backend in use: py
 cdf index: 0
 ---------------------------------------------------------------------------
-ValueError                                Traceback (most recent call last)
-Cell In[12], line 21
-     19 symbols = np.array([ (0 & 0xff) | (1 << 8), (0 & 0xff) | (2 << 8) ], dtype=np.int16)
-     20 enc.encode_y(symbols, idx)
----> 21 enc.flush()
-     22 stream = enc.get_encoded_stream()
-     23 print("Encoded stream len:", len(stream))
+TypeError                                 Traceback (most recent call last)
+Cell In[15], line 22
+     20 symbols = np.array([ (0 & 0xff) | (1 << 8), (0 & 0xff) | (2 << 8) ], dtype=np.int16)
+     21 enc.encode_y(symbols, idx)
+---> 22 enc.flush()
+     23 stream = enc.get_encoded_stream()
+     24 print("Encoded stream len:", len(stream))
 
 File ~/dcvc/DCVC_fresh/src/python/codec_loader.py:26, in RansEncoder.flush(self)
      25 def flush(self):
 ---> 26     self._lib.flush()
 
-File ~/dcvc/DCVC_fresh/src/python/mlcodec_rans_py.py:123, in RansEncoderLib.flush(self)
-    121         cdf_idx = combined & 0xff
-    122         s = combined >> 8
---> 123         start, rng = rans_sym_grp[cdf_idx]
-    124         r = RansEncPut(r, out, start, rng)
-    125 elif task[0] == "z":
+File ~/dcvc/DCVC_fresh/src/python/mlcodec_rans_py.py:132, in RansEncoderLib.flush(self)
+    130 s = combined >> 8
+    131 entry = rans_sym_grp[cdf_idx]
+--> 132 start = int(entry[0])
+    133 rng = int(entry[1])
+    134 r = RansEncPut(r, out, start, rng)
 
-ValueError: too many values to unpack (expected 2)
+TypeError: int() argument must be a string, a bytes-like object or a real number, not 'tuple'
