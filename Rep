@@ -1,68 +1,69 @@
-# Create top-level shim MLCodec_extensions_cpp.py and re-run test_video.py
-from pathlib import Path
-import os, sys, importlib, subprocess, traceback
+Perfect 👌 — since you’ve placed the file at
 
-repo_root = Path("/home/work/dcvc/DCVC_fresh").resolve()
-os.chdir(repo_root)
+/home/work/dcvc/DCVC_fresh/media/data/UVG/Beauty_1920x1080_120fps_420_8bit_YUV.yuv
 
-# Top-level shim path (module must be importable as 'MLCodec_extensions_cpp')
-top_shim = repo_root / "MLCodec_extensions_cpp.py"
-shim_code = r'''
-# Top-level shim to satisfy `import MLCodec_extensions_cpp`
-# Delegates to src.python.codec_loader Python fallback when compiled extension missing.
+but your dataset_config_example_yuv420.json still points to
 
-try:
-    # If a compiled extension named MLCodec_extensions_cpp exists on sys.path this
-    # will import it; otherwise the except clause will run and we re-export the
-    # pure-Python fallback from src.python.codec_loader.
-    import importlib
-    _real = importlib.import_module("MLCodec_extensions_cpp")
-    # If this succeeded, re-export names from the real module:
-    RansEncoder = _real.RansEncoder
-    RansDecoder = _real.RansDecoder
-    pmf_to_quantized_cdf = getattr(_real, "pmf_to_quantized_cdf", None)
-except Exception:
-    # Fallback: import the python implementation and re-export symbols
-    from src.python.codec_loader import RansEncoder as RansEncoder, RansDecoder as RansDecoder, pmf_to_quantized_cdf as pmf_to_quantized_cdf
-'''
+/media/data/UVG/Beauty_1920x1080_120fps_420_8bit_YUV.yuv
 
-top_shim.write_text(shim_code)
-print("Wrote top-level shim:", top_shim)
+you just need to patch the JSON so it uses the correct relative path inside your repo.
 
-# Ensure repo root is on PYTHONPATH for subprocesses
-env = os.environ.copy()
-env["PYTHONPATH"] = str(repo_root)
-print("PYTHONPATH for subprocess:", env["PYTHONPATH"])
 
-# quick import test in this process
-try:
-    importlib.invalidate_caches()
-    mod = importlib.import_module("MLCodec_extensions_cpp")
-    print("Imported top-level shim OK:", mod)
-    print("Has RansEncoder:", hasattr(mod, "RansEncoder"), "Has RansDecoder:", hasattr(mod, "RansDecoder"))
-except Exception:
-    traceback.print_exc()
+---
 
-# Now run test_video.py (same args as before)
-cmd = [
-    sys.executable, "test_video.py",
-    "--model_path_i", "./checkpoints/cvpr2025_image.pth.tar",
-    "--model_path_p", "./checkpoints/cvpr2025_video.pth.tar",
-    "--rate_num", "4",
-    "--test_config", "./dataset_config_example_yuv420.json",
-    "--cuda", "1",
-    "-w", "1",
-    "--write_stream", "1",
-    "--save_decoded_frame", "1",
-    "--force_zero_thres", "0.12",
-    "--output_path", "output.json",
-    "--force_intra_period", "-1",
-    "--reset_interval", "64",
-    "--force_frame_num", "-1",
-    "--check_existing", "0",
-    "--verbose", "1",
-]
+✅ Fix dataset config
 
-print("Running test_video.py (this may take a while)...")
-proc = subprocess.run(cmd, cwd=str(repo_root), env=env)
-print("Return code:", proc.returncode)
+Run this in your notebook (repo root):
+
+import json, pathlib
+
+config_path = pathlib.Path("dataset_config_example_yuv420.json")
+cfg = json.loads(config_path.read_text())
+
+for seq in cfg:
+    if "UVG" in seq["src_path"]:
+        old = seq["src_path"]
+        seq["src_path"] = "./media/data/UVG/Beauty_1920x1080_120fps_420_8bit_YUV.yuv"
+        print("Patched:", old, "->", seq["src_path"])
+
+config_path.write_text(json.dumps(cfg, indent=2))
+print("Updated JSON:", config_path)
+
+
+---
+
+✅ Test with a few frames first
+
+Instead of processing the whole 120fps clip, run a quick test:
+
+python test_video.py \
+  --model_path_i ./checkpoints/cvpr2025_image.pth.tar \
+  --model_path_p ./checkpoints/cvpr2025_video.pth.tar \
+  --rate_num 1 \
+  --test_config ./dataset_config_example_yuv420.json \
+  --cuda 0 \
+  -w 1 \
+  --write_stream 0 \
+  --save_decoded_frame 0 \
+  --force_zero_thres 0.12 \
+  --output_path output.json \
+  --force_intra_period -1 \
+  --reset_interval 64 \
+  --force_frame_num 2 \
+  --check_existing 0 \
+  --verbose 1
+
+That will process only 2 frames using CPU only → quick sanity check.
+
+
+---
+
+✅ Then run the full job
+
+If the small run works, remove --force_frame_num 2 and set --cuda 1 if you want GPU.
+
+
+---
+
+Do you want me to also show you how to limit the resolution or crop the YUV so tests run faster, instead of full 1080p?
+
