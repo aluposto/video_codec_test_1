@@ -1,29 +1,19 @@
-
-MODEL_I="./checkpoints/cvpr2025_image.pth.tar"
-MODEL_P="./checkpoints/cvpr2025_video.pth.tar"
-CONFIG="./dataset_config_example_yuv420.json"  
-OUTJSON="output.json"
-
 !python test_video.py \
-  --model_path_i "$MODEL_I" \
-  --model_path_p "$MODEL_P" \
+  --model_path_i ./checkpoints/cvpr2025_image.pth.tar \
+  --model_path_p ./checkpoints/cvpr2025_video.pth.tar \
   --rate_num 4 \
-  --test_config "$CONFIG" \
+  --test_config ./dataset_config_example_yuv420.json \
   --cuda 1 \
   -w 1 \
   --write_stream 1 \
   --save_decoded_frame 1 \
   --force_zero_thres 0.12 \
-  --output_path "$OUTJSON" \
+  --output_path output.json \
   --force_intra_period -1 \
   --reset_interval 64 \
   --force_frame_num -1 \
   --check_existing 0 \
   --verbose 1
-
-
-
-gives me return 
 
 
 Traceback (most recent call last):
