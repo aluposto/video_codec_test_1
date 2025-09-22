@@ -1,7 +1,48 @@
-# Cell C: run test_video.py from notebook so subprocess sees PYTHONPATH
-import subprocess, os, sys
-env = os.environ.copy()
-env["PYTHONPATH"] = os.getcwd()
+# Create a shim module named MLCodec_extensions_cpp that wraps our Python fallback,
+# then re-run the same test command (subprocess) so worker processes can import it.
+from pathlib import Path
+import os, sys, importlib, subprocess, textwrap
+
+repo_root = Path("/home/work/dcvc/DCVC_fresh").resolve()
+os.chdir(repo_root)
+sys.path.insert(0, str(repo_root))
+os.environ["PYTHONPATH"] = str(repo_root)
+
+shim_path = repo_root / "src" / "MLCodec_extensions_cpp.py"
+shim_code = r'''
+# Auto-generated shim to satisfy `import MLCodec_extensions_cpp`
+# Delegates to src.python.codec_loader Python fallback when C++ extension missing.
+
+try:
+    # Prefer compiled extension if present
+    import importlib
+    ML = importlib.import_module("MLCodec_extensions_cpp")
+    # If we imported the compiled extension, we don't need this shim. But because
+    # this shim file itself is named MLCodec_extensions_cpp, this block won't run.
+except Exception:
+    # Import our fallback implementation
+    from src.python.codec_loader import RansEncoder as _RansEncoder, RansDecoder as _RansDecoder, pmf_to_quantized_cdf as _pmf
+    # Re-export the API expected by the code that imports MLCodec_extensions_cpp
+    RansEncoder = _RansEncoder
+    RansDecoder = _RansDecoder
+    pmf_to_quantized_cdf = _pmf
+'''
+
+# Write shim file (overwrite if exists)
+shim_path.write_text(shim_code)
+print("Wrote shim:", shim_path)
+
+# Confirm file exists and is importable
+import importlib, traceback
+try:
+    importlib.invalidate_caches()
+    mod = importlib.import_module("MLCodec_extensions_cpp")
+    print("Imported shim module OK:", mod)
+    print("Attributes:", [a for a in ("RansEncoder","RansDecoder","pmf_to_quantized_cdf") if hasattr(mod,a)])
+except Exception:
+    traceback.print_exc()
+
+# Now run test_video.py (same command you used before). This will launch worker processes that import MLCodec_extensions_cpp.
 cmd = [
     sys.executable, "test_video.py",
     "--model_path_i", "./checkpoints/cvpr2025_image.pth.tar",
@@ -20,8 +61,11 @@ cmd = [
     "--check_existing", "0",
     "--verbose", "1",
 ]
-print("Running:", " ".join(cmd))
-proc = subprocess.run(cmd, cwd=os.getcwd(), env=env)
+
+print("Running test_video.py (this may take a while)...")
+env = os.environ.copy()
+env["PYTHONPATH"] = str(repo_root)
+proc = subprocess.run(cmd, cwd=str(repo_root), env=env)
 print("Return code:", proc.returncode)
 
 
@@ -30,7 +74,19 @@ print("Return code:", proc.returncode)
 
 
 
-Running: /home/work/dcvc/miniconda3/envs/dcvc_rt_env/bin/python test_video.py --model_path_i ./checkpoints/cvpr2025_image.pth.tar --model_path_p ./checkpoints/cvpr2025_video.pth.tar --rate_num 4 --test_config ./dataset_config_example_yuv420.json --cuda 1 -w 1 --write_stream 1 --save_decoded_frame 1 --force_zero_thres 0.12 --output_path output.json --force_intra_period -1 --reset_interval 64 --force_frame_num -1 --check_existing 0 --verbose 1
+Wrote shim: /home/work/dcvc/DCVC_fresh/src/MLCodec_extensions_cpp.py
+Running test_video.py (this may take a while)...
+Traceback (most recent call last):
+  File "/tmp/ipykernel_1552/3947874010.py", line 39, in <module>
+    mod = importlib.import_module("MLCodec_extensions_cpp")
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/work/dcvc/miniconda3/envs/dcvc_rt_env/lib/python3.12/importlib/__init__.py", line 90, in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<frozen importlib._bootstrap>", line 1387, in _gcd_import
+  File "<frozen importlib._bootstrap>", line 1360, in _find_and_load
+  File "<frozen importlib._bootstrap>", line 1324, in _find_and_load_unlocked
+ModuleNotFoundError: No module named 'MLCodec_extensions_cpp'
 cannot import cuda implementation for inference, fallback to pytorch.
 testing 4 rates, using qp: 0, 21, 42, 63, 
   0%|          | 0/212 [00:00<?, ?it/s]
@@ -47,7 +103,7 @@ Traceback (most recent call last):
   File "/home/work/dcvc/DCVC_fresh/src/models/entropy_models.py", line 15, in __init__
     from MLCodec_extensions_cpp import RansEncoder, RansDecoder
 ModuleNotFoundError: No module named 'MLCodec_extensions_cpp'
-  0%|          | 0/212 [00:05<?, ?it/s]
+  0%|          | 0/212 [00:04<?, ?it/s]
 Traceback (most recent call last):
   File "/home/work/dcvc/DCVC_fresh/test_video.py", line 541, in <module>
     main()
