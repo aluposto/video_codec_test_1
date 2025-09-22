@@ -1,183 +1,40 @@
-# Patch top-level shim to return numpy array from get_encoded_stream(), then re-run test_video.py
+Thanks — this is a useful error. The CUDA message
+
+torch.AcceleratorError: CUDA error: device-side assert triggered
+...
+/pytorch/.../ScatterGatherKernel.cu:163 ... "scatter gather kernel index out of bounds"
+
+means a GPU kernel saw an out-of-bounds index or otherwise invalid indexing. That usually comes from a tensor containing unexpected values (e.g. an index < 0 or >= size). It can be caused by:
+
+a bug in the model / runtime (rare if using the official code),
+
+mismatched shapes / dtypes / values produced by our Python fallback shim (likely, since we replaced the compiled entropy coder),
+
+bad input data, or
+
+a genuine hardware/driver mismatch (less likely given the message).
+
+
+We need to narrow it down. I prepared three immediate steps you can run from the notebook. Run them in order and paste the outputs if the issue remains — I’ll use that to debug further.
+
+
+---
+
+1) Run on GPU with CUDA synchronous launching to get accurate stack trace
+
+This forces CUDA calls to be synchronous so Python shows the exact failing line. Run one notebook cell:
+
+# Cell: re-run test_video.py with CUDA_LAUNCH_BLOCKING=1 to get precise error location
+import os, sys, subprocess
 from pathlib import Path
-import os, sys, importlib, subprocess, traceback
 
 repo_root = Path("/home/work/dcvc/DCVC_fresh").resolve()
 os.chdir(repo_root)
-sys.path.insert(0, str(repo_root))
-os.environ["PYTHONPATH"] = str(repo_root)
 
-shim_file = repo_root / "MLCodec_extensions_cpp.py"
+env = os.environ.copy()
+env["PYTHONPATH"] = str(repo_root)
+env["CUDA_LAUNCH_BLOCKING"] = "1"
 
-shim = r'''
-"""
-Top-level shim implementing MLCodec_extensions_cpp API using the Python fallback.
-Returns numpy arrays for byte streams so callers can call .tobytes().
-"""
-
-from src.python import mlcodec_rans_py as pyfb
-import numpy as _np
-
-class RansEncoder:
-    def __init__(self):
-        Impl = getattr(pyfb, "RansEncoder", None) or getattr(pyfb, "RansEncoderLib", None)
-        if Impl is None:
-            raise ImportError("No encoder implementation in Python fallback")
-        self._impl = Impl()
-        self._use_two = False
-
-    def encode_y(self, symbols, cdf_group_index):
-        arr = _np.asarray(symbols)
-        if hasattr(self._impl, "encode_y"):
-            return self._impl.encode_y(arr, int(cdf_group_index))
-        raise AttributeError("Underlying encoder has no encode_y")
-
-    def encode_z(self, symbols, cdf_group_index, start_offset, per_channel_size):
-        arr = _np.asarray(symbols)
-        if hasattr(self._impl, "encode_z"):
-            return self._impl.encode_z(arr, int(cdf_group_index), int(start_offset), int(per_channel_size))
-        raise AttributeError("Underlying encoder has no encode_z")
-
-    def flush(self):
-        if hasattr(self._impl, "flush"):
-            return self._impl.flush()
-        return None
-
-    def get_encoded_stream(self):
-        # Return a numpy ndarray of dtype uint8 so callers can use .tobytes()
-        if hasattr(self._impl, "get_encoded_stream"):
-            s = self._impl.get_encoded_stream()
-            try:
-                return _np.asarray(s, dtype=_np.uint8)
-            except Exception:
-                # if s is bytes/bytearray, convert
-                try:
-                    return _np.frombuffer(bytes(s), dtype=_np.uint8)
-                except Exception:
-                    return _np.array([], dtype=_np.uint8)
-        return _np.array([], dtype=_np.uint8)
-
-    def reset(self):
-        if hasattr(self._impl, "reset"):
-            return self._impl.reset()
-        return None
-
-    def add_cdf(self, cdfs, cdfs_sizes, offsets):
-        return self._impl.add_cdf(cdfs, cdfs_sizes, offsets)
-
-    def empty_cdf_buffer(self):
-        if hasattr(self._impl, "empty_cdf_buffer"):
-            return self._impl.empty_cdf_buffer()
-
-    def set_use_two_encoders(self, b):
-        if hasattr(self._impl, "set_use_two_encoders"):
-            return self._impl.set_use_two_encoders(bool(b))
-        self._use_two = bool(b)
-        return None
-
-    def get_use_two_encoders(self):
-        if hasattr(self._impl, "get_use_two_encoders"):
-            return bool(self._impl.get_use_two_encoders())
-        return bool(self._use_two)
-
-
-class RansDecoder:
-    def __init__(self):
-        Impl = getattr(pyfb, "RansDecoder", None) or getattr(pyfb, "RansDecoderLib", None)
-        if Impl is None:
-            raise ImportError("No decoder implementation in Python fallback")
-        self._impl = Impl()
-        self._use_two = False
-
-    def set_stream(self, encoded):
-        if isinstance(encoded, (bytes, bytearray)):
-            if hasattr(self._impl, "set_stream"):
-                try:
-                    return self._impl.set_stream(encoded)
-                except TypeError:
-                    # some impls expect numpy arrays
-                    import numpy as _np
-                    return self._impl.set_stream(_np.frombuffer(bytes(encoded), dtype=_np.uint8))
-        else:
-            import numpy as _np
-            arr = _np.asarray(encoded, dtype=_np.uint8)
-            if hasattr(self._impl, "set_stream"):
-                try:
-                    return self._impl.set_stream(arr)
-                except TypeError:
-                    return self._impl.set_stream(arr.tobytes())
-        if hasattr(self._impl, "_stream"):
-            self._impl._stream = bytearray(encoded)
-
-    def decode_y(self, indexes, cdf_group_index):
-        if hasattr(self._impl, "decode_y"):
-            return self._impl.decode_y(indexes, int(cdf_group_index))
-        raise AttributeError("Underlying decoder has no decode_y")
-
-    def decode_and_get_y(self, indexes, cdf_group_index):
-        self.decode_y(indexes, cdf_group_index)
-        return self.get_decoded_tensor()
-
-    def decode_z(self, total_size, cdf_group_index, start_offset, per_channel_size):
-        if hasattr(self._impl, "decode_z"):
-            return self._impl.decode_z(int(total_size), int(cdf_group_index), int(start_offset), int(per_channel_size))
-        # fallback: create zero array in underlying structure
-        try:
-            if hasattr(self._impl, "_decoded"):
-                self._impl._decoded = [0] * int(total_size)
-            elif hasattr(self._impl, "m_decoded"):
-                self._impl.m_decoded = [0] * int(total_size)
-            else:
-                self._impl._decoded = [0] * int(total_size)
-        except Exception:
-            raise AttributeError("Underlying decoder has no decode_z and fallback failed")
-
-    def get_decoded_tensor(self):
-        if hasattr(self._impl, "get_decoded_tensor"):
-            out = self._impl.get_decoded_tensor()
-            import numpy as _np
-            if isinstance(out, _np.ndarray):
-                return out
-            try:
-                return _np.asarray(out)
-            except Exception:
-                return _np.array(list(out))
-        import numpy as _np
-        return _np.array([], dtype=_np.int16)
-
-    def add_cdf(self, cdfs, cdfs_sizes, offsets):
-        return self._impl.add_cdf(cdfs, cdfs_sizes, offsets)
-
-    def empty_cdf_buffer(self):
-        if hasattr(self._impl, "empty_cdf_buffer"):
-            return self._impl.empty_cdf_buffer()
-
-    def set_use_two_decoders(self, b):
-        if hasattr(self._impl, "set_use_two_decoders"):
-            return self._impl.set_use_two_decoders(bool(b))
-        self._use_two = bool(b)
-
-    def get_use_two_decoders(self):
-        if hasattr(self._impl, "get_use_two_decoders"):
-            return bool(self._impl.get_use_two_decoders())
-        return bool(getattr(self, "_use_two", False))
-
-pmf_to_quantized_cdf = getattr(pyfb, "pmf_to_quantized_cdf", None)
-'''
-
-# Write shim
-shim_file.write_text(shim)
-print("Patched shim written:", shim_file)
-
-# Force reload and quick import check
-importlib.invalidate_caches()
-try:
-    mod = importlib.import_module("MLCodec_extensions_cpp")
-    print("Imported MLCodec_extensions_cpp shim OK:", mod)
-except Exception:
-    traceback.print_exc()
-
-# Run the full command (same as you requested). If you prefer a shorter run, change --force_frame_num below.
 cmd = [
     sys.executable, "test_video.py",
     "--model_path_i", "./checkpoints/cvpr2025_image.pth.tar",
@@ -187,18 +44,146 @@ cmd = [
     "--cuda", "1",
     "-w", "1",
     "--write_stream", "1",
-    "--save_decoded_frame", "1",
+    "--save_decoded_frame", "0",
     "--force_zero_thres", "0.12",
-    "--output_path", "output.json",
+    "--output_path", "output_debug_cuda.json",
     "--force_intra_period", "-1",
     "--reset_interval", "64",
-    "--force_frame_num", "-1",   # full run; change to "2" for quick check
+    "--force_frame_num", "-1",
     "--check_existing", "0",
     "--verbose", "1",
 ]
 
-print("Running test_video.py (full run requested) ...")
+print("Running with CUDA_LAUNCH_BLOCKING=1 ... (may produce big trace)")
+proc = subprocess.run(cmd, cwd=str(repo_root), env=env, capture_output=True, text=True)
+print("Returncode:", proc.returncode)
+print("--- stdout (last 4000 chars) ---")
+print(proc.stdout[-4000:])
+print("--- stderr (last 4000 chars) ---")
+print(proc.stderr[-4000:])
+
+Why: this will show the exact Python line that triggered the GPU assert. Paste the stderr output if it still fails.
+
+
+---
+
+2) Run the same job on CPU to test whether the logic error reproduces without GPU
+
+If the bug is due to wrong values from our Python entropy fallback, it will likely reproduce on CPU too — and the CPU stack traces are easier to read and debug.
+
+Change --cuda to 0 and run:
+
+# Cell: run full test on CPU (this may be slow). Use a small frame count if you want quick check.
+import os, sys, subprocess
+from pathlib import Path
+
+repo_root = Path("/home/work/dcvc/DCVC_fresh").resolve()
+os.chdir(repo_root)
+
 env = os.environ.copy()
 env["PYTHONPATH"] = str(repo_root)
-proc = subprocess.run(cmd, cwd=str(repo_root), env=env)
-print("Return code:", proc.returncode)
+
+cmd = [
+    sys.executable, "test_video.py",
+    "--model_path_i", "./checkpoints/cvpr2025_image.pth.tar",
+    "--model_path_p", "./checkpoints/cvpr2025_video.pth.tar",
+    "--rate_num", "4",
+    "--test_config", "./dataset_config_example_yuv420.json",
+    "--cuda", "0",
+    "-w", "1",
+    "--write_stream", "1",
+    "--save_decoded_frame", "0",
+    "--force_zero_thres", "0.12",
+    "--output_path", "output_debug_cpu.json",
+    "--force_intra_period", "-1",
+    "--reset_interval", "64",
+    "--force_frame_num", "2",   # small number to make this quick; set -1 for full run
+    "--check_existing", "0",
+    "--verbose", "1",
+]
+
+print("Running on CPU (2 frames) ...")
+proc = subprocess.run(cmd, cwd=str(repo_root), env=env, capture_output=True, text=True)
+print("Returncode:", proc.returncode)
+print("--- stdout ---")
+print(proc.stdout)
+print("--- stderr ---")
+print(proc.stderr)
+
+If the CPU run errors similarly, share the trace. If CPU runs cleanly, the problem is GPU-specific (indexing may overflow due to dtype/casting differences on the GPU).
+
+
+---
+
+3) Quick inspect: verify that the fallback entropy coder returns reasonable index ranges / shapes
+
+Because the kernel complained about "scatter gather index out of bounds", a common cause is an indexes tensor that contains values >= the cdf length. We can add a small check in the Python fallback to print max/min values of indexes or cdf before the failing op — but rather than changing dozens of files, run this helper to import the Python fallback and sample a few internal values from a small forward pass.
+
+Run this cell to import the Python fallback and call the functions used earlier in the pipeline on a tiny synthetic input — this helps check index ranges produced by build_indexes_decoder etc. (I will attempt a conservative call that matches the code path, but if it errors paste the exception):
+
+# Cell: quick sanity-check of entropy fallback internals (best-effort)
+import importlib, numpy as np, traceback
+from pathlib import Path
+repo_root = Path("/home/work/dcvc/DCVC_fresh").resolve()
+import sys
+sys.path.insert(0, str(repo_root))
+
+try:
+    mod = importlib.import_module("src.python.mlcodec_rans_py")
+    print("Imported src.python.mlcodec_rans_py OK")
+except Exception:
+    traceback.print_exc()
+    raise SystemExit("Cannot import fallback module")
+
+# Attempt to create entropy model object if available and inspect internals
+try:
+    # Try to find any class that looks like a decoder/encoder
+    Enc = getattr(mod, "RansEncoder", None) or getattr(mod, "RansEncoderLib", None)
+    Dec = getattr(mod, "RansDecoder", None) or getattr(mod, "RansDecoderLib", None)
+    print("Enc:", Enc, "Dec:", Dec)
+    if Enc is None or Dec is None:
+        print("Fallback module lacks encoder/decoder classes; cannot inspect more.")
+    else:
+        enc = Enc()
+        dec = Dec()
+        # If available, examine add_cdf API signature with a small toy CDF:
+        toy_cdf = np.array([[0, 819, 4096]], dtype=np.int32)  # shape (1,3)
+        cdf_sizes = np.array([3], dtype=np.int32)
+        offsets = np.array([0], dtype=np.int32)
+        try:
+            idx = enc.add_cdf(toy_cdf, cdf_sizes, offsets)
+            print("add_cdf returned index:", idx)
+        except Exception:
+            traceback.print_exc()
+            print("add_cdf failed on toy input.")
+except Exception:
+    traceback.print_exc()
+
+
+---
+
+Immediate recommended next actions (pick what you want)
+
+1. Run Step 1 (CUDA_LAUNCH_BLOCKING=1) — this will give the exact Python line causing the kernel assert. Paste the stderr here. That’s the fastest way to find the root cause.
+
+
+2. If CUDA stacktrace is noisy, run Step 2 (CPU small run) — if the CPU reproduces the bug we can debug with normal Python stack traces.
+
+
+3. If we confirm it’s the Python fallback causing incorrect index ranges, the long-term fix is:
+
+Build the real C++ extension in a separate conda env (recommended python 3.10 or 3.11) so MLCodec_extensions_cpp is the compiled extension. I’ll give exact commands for your CUDA/cuDNN/torch combination if you tell me torch.__version__ and cuda reported by nvidia-smi or torch.version.cuda.
+
+OR thoroughly fix the Python fallback implementation to match the exact behaviors and numeric ranges of the C++ extension (harder but possible).
+
+
+
+4. If you prefer immediate continuity and want to continue full runs now, you can try running with --cuda 0 (CPU) for the full dataset — it will likely run slower but may avoid the GPU assert if the CPU code path is safe.
+
+
+
+
+---
+
+Tell me which debug step you want me to run now (I recommend Step 1). If you want me to give the exact build commands for the C++ extension instead, say “Give build instructions” and I’ll produce a concise step-by-step conda recipe tuned to your environment.
+
