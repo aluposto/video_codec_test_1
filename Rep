@@ -1,46 +1,75 @@
-# Patch simple shim to return int16 decoded tensor, reload and smoke-test
-from pathlib import Path
-import importlib, sys
+Perfect — let’s wire that up so you can run test_video.py with the shim backend.
 
-root = Path(".").resolve()
-file_path = root / "src" / "python" / "mlcodec_rans_py.py"
 
-# Read current file to ensure we only modify the get_decoded_tensor dtype
-txt = file_path.read_text()
+---
 
-# Replace the function that returns np.array(..., dtype=np.int8) to use int16
-new_txt = txt.replace("return np.array(self._decoded, dtype=np.int8)", "return np.array(self._decoded, dtype=np.int16)")
+1. Check that you’re in the right directory
 
-file_path.write_text(new_txt)
-print("Patched get_decoded_tensor -> int16 in", file_path)
+From terminal:
 
-# Unload stale modules
-to_unload = [m for m in list(sys.modules.keys()) if m.startswith("src.python") or m in ("mlcodec_rans_py","codec_loader")]
-for m in to_unload:
-    sys.modules.pop(m, None)
-print("Unloaded modules count:", len(to_unload))
+cd /home/work/dcvc/DCVC_fresh
+ls test_video.py
 
-# Reload loader and test
-loader = importlib.import_module("src.python.codec_loader")
-importlib.reload(loader)
-print("Loader BACKEND:", loader.BACKEND)
+Make sure test_video.py exists there.
 
-# Smoke test
-import numpy as np
-pmf = [0.2,0.5,0.3]
-cdf = loader.pmf_to_quantized_cdf(pmf, 12)
-cdfs_arr = np.array([cdf], dtype=np.int32)
-cdfs_sizes = np.array([len(cdf)], dtype=np.int32)
-offsets = np.array([0], dtype=np.int32)
 
-enc = loader.RansEncoder()
-idx = enc.add_cdf(cdfs_arr, cdfs_sizes, offsets)
-enc.encode_y(np.array([ (0 & 0xff) | (1 << 8), (0 & 0xff) | (2 << 8) ], dtype=np.int16), idx)
-enc.flush()
-s = enc.get_encoded_stream()
-print("simple encoded bytes:", list(np.asarray(s, dtype=np.uint8)))
-dec = loader.RansDecoder()
-dec.add_cdf(cdfs_arr, cdfs_sizes, offsets)
-dec.set_stream(s)
-dec.decode_y(np.array([0,0], dtype=np.uint8), idx)
-print("decoded from simple fallback:", dec.get_decoded_tensor().tolist())
+---
+
+2. Verify checkpoints & config
+
+From repo root, check that the files you reference exist:
+
+ls checkpoints/cvpr2025_image.pth.tar
+ls checkpoints/cvpr2025_video.pth.tar
+ls dataset_config_example_yuv420.json
+
+If they don’t exist, you’ll need to download or adjust paths.
+
+
+---
+
+3. Run the command
+
+From repo root (/home/work/dcvc/DCVC_fresh), with your conda env activated (dcvc_rt_env):
+
+python test_video.py \
+  --model_path_i ./checkpoints/cvpr2025_image.pth.tar \
+  --model_path_p ./checkpoints/cvpr2025_video.pth.tar \
+  --rate_num 4 \
+  --test_config ./dataset_config_example_yuv420.json \
+  --cuda 1 \
+  -w 1 \
+  --write_stream 1 \
+  --force_zero_thres 0.12 \
+  --output_path output.json \
+  --force_intra_period -1 \
+  --reset_interval 64 \
+  --force_frame_num -1 \
+  --check_existing 0 \
+  --verbose 0
+
+
+---
+
+4. Expected behavior with shim
+
+The run should proceed (no C++ build errors).
+
+Caveat: The “bitstream” written will be from the shim (no real compression). So reported bitrate, PSNR/SSIM, etc. won’t reflect the true DCVC numbers.
+
+But functionally: model loads, frames process, JSON results should be written to output.json.
+
+
+
+---
+
+✅ Next step for you:
+Run the command above in your terminal, then paste here:
+
+whether it started running (did you see progress output?),
+
+and if it crashes, copy the traceback so I can patch the shim or the loader.
+
+
+Do you want me to also prep a shorter “debug run” command (e.g., forcing it to only process 2–3 frames quickly) so you don’t need to wait for a full video pass?
+
