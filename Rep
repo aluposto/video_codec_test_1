@@ -1,6 +1,6 @@
-# Re-run short smoke test with rate_num=2 (fix for AssertionError)
+# Re-run short smoke test with write_stream=1 (keeps small outputs), CPU, 2 frames
 from pathlib import Path
-import os, sys, subprocess, importlib
+import os, sys, subprocess
 
 repo_root = Path("/home/work/dcvc/DCVC_fresh").resolve()
 os.chdir(repo_root)
@@ -11,17 +11,17 @@ cmd = [
     sys.executable, "test_video.py",
     "--model_path_i", "./checkpoints/cvpr2025_image.pth.tar",
     "--model_path_p", "./checkpoints/cvpr2025_video.pth.tar",
-    "--rate_num", "2",                        # <- changed to 2
+    "--rate_num", "2",
     "--test_config", "./dataset_config_example_yuv420.json",
-    "--cuda", "0",                            # CPU for smoke test
+    "--cuda", "0",               # CPU for smoke test
     "-w", "1",
-    "--write_stream", "0",
-    "--save_decoded_frame", "0",
+    "--write_stream", "1",       # REQUIRED by worker assertion
+    "--save_decoded_frame", "0", # keep outputs small
     "--force_zero_thres", "0.12",
     "--output_path", "output_smoke.json",
     "--force_intra_period", "-1",
     "--reset_interval", "64",
-    "--force_frame_num", "2",                 # small number of frames
+    "--force_frame_num", "2",
     "--check_existing", "0",
     "--verbose", "1",
 ]
@@ -32,8 +32,7 @@ print("Return code:", proc.returncode)
 
 outp = repo_root / "output_smoke.json"
 if outp.exists():
-    txt = outp.read_text()
     print("output_smoke.json (first 400 chars):")
-    print(txt[:400])
+    print(outp.read_text()[:400])
 else:
     print("No output_smoke.json produced.")
