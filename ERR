@@ -1,14 +1,20 @@
-Encoded stream bytes: [np.uint8(3), np.uint8(84), np.uint8(10), np.uint8(146), np.uint8(58)]
-Encoded stream len: 5
-Internal decoder lib type: <class 'src.python.mlcodec_rans_py.RansDecoderLib'>
-_lib._rans (state): 982649428
-_lib._ptr (pointer): 0
-cum (low bits): 2644
-len first_group: 1
-first_group[0] sample (first 8): [0, 819, 2866, 4096]
-max_cdf in first_group: 4096
-cum < max_cdf ? True
-first4: [np.uint8(3), np.uint8(84), np.uint8(10), np.uint8(146)] -> 3
-last4: [np.uint8(84), np.uint8(10), np.uint8(146), np.uint8(58)] -> 84
-first4 reversed: [np.uint8(146), np.uint8(10), np.uint8(84), np.uint8(3)] -> 146
-last4 reversed: [np.uint8(58), np.uint8(146), np.uint8(10), np.uint8(84)] -> 58
+Wrote simple shim to /home/work/dcvc/DCVC_fresh/src/python/mlcodec_rans_py.py
+Unloaded 3 modules (preview): ['src.python', 'src.python.mlcodec_rans_py', 'src.python.codec_loader']
+Loader BACKEND: py
+simple encoded bytes: [np.uint8(1), np.uint8(0), np.uint8(2), np.uint8(0), np.uint8(0), np.uint8(0), np.uint8(0), np.uint8(1), np.uint8(0), np.uint8(2)]
+---------------------------------------------------------------------------
+OverflowError                             Traceback (most recent call last)
+Cell In[8], line 150
+    148 dec.set_stream(s)
+    149 dec.decode_y(np.array([0,0], dtype=np.uint8), idx)
+--> 150 print("decoded from simple fallback:", dec.get_decoded_tensor().tolist())
+
+File ~/dcvc/DCVC_fresh/src/python/codec_loader.py:62, in RansDecoder.get_decoded_tensor(self)
+     61 def get_decoded_tensor(self):
+---> 62     return self._lib.get_decoded_tensor()
+
+File ~/dcvc/DCVC_fresh/src/python/mlcodec_rans_py.py:108, in RansDecoderLib.get_decoded_tensor(self)
+    107 def get_decoded_tensor(self):
+--> 108     return np.array(self._decoded, dtype=np.int8)
+
+OverflowError: Python integer 256 out of bounds for int8
