@@ -1,22 +1,63 @@
-!python test_video.py \
-  --model_path_i ./checkpoints/cvpr2025_image.pth.tar \
-  --model_path_p ./checkpoints/cvpr2025_video.pth.tar \
-  --rate_num 4 \
-  --test_config ./dataset_config_example_yuv420.json \
-  --cuda 1 \
-  -w 1 \
-  --write_stream 1 \
-  --save_decoded_frame 1 \
-  --force_zero_thres 0.12 \
-  --output_path output.json \
-  --force_intra_period -1 \
-  --reset_interval 64 \
-  --force_frame_num -1 \
-  --check_existing 0 \
-  --verbose 1
+# Cell C: run test_video.py from notebook so subprocess sees PYTHONPATH
+import subprocess, os, sys
+env = os.environ.copy()
+env["PYTHONPATH"] = os.getcwd()
+cmd = [
+    sys.executable, "test_video.py",
+    "--model_path_i", "./checkpoints/cvpr2025_image.pth.tar",
+    "--model_path_p", "./checkpoints/cvpr2025_video.pth.tar",
+    "--rate_num", "4",
+    "--test_config", "./dataset_config_example_yuv420.json",
+    "--cuda", "1",
+    "-w", "1",
+    "--write_stream", "1",
+    "--save_decoded_frame", "1",
+    "--force_zero_thres", "0.12",
+    "--output_path", "output.json",
+    "--force_intra_period", "-1",
+    "--reset_interval", "64",
+    "--force_frame_num", "-1",
+    "--check_existing", "0",
+    "--verbose", "1",
+]
+print("Running:", " ".join(cmd))
+proc = subprocess.run(cmd, cwd=os.getcwd(), env=env)
+print("Return code:", proc.returncode)
 
 
+
+
+
+
+
+Running: /home/work/dcvc/miniconda3/envs/dcvc_rt_env/bin/python test_video.py --model_path_i ./checkpoints/cvpr2025_image.pth.tar --model_path_p ./checkpoints/cvpr2025_video.pth.tar --rate_num 4 --test_config ./dataset_config_example_yuv420.json --cuda 1 -w 1 --write_stream 1 --save_decoded_frame 1 --force_zero_thres 0.12 --output_path output.json --force_intra_period -1 --reset_interval 64 --force_frame_num -1 --check_existing 0 --verbose 1
+cannot import cuda implementation for inference, fallback to pytorch.
+testing 4 rates, using qp: 0, 21, 42, 63, 
+  0%|          | 0/212 [00:00<?, ?it/s]
+cannot import cuda implementation for inference, fallback to pytorch.
+Exception in initializer:
 Traceback (most recent call last):
-  File "/home/work/dcvc/DCVC_fresh/test_video.py", line 16, in <module>
-    from src.layers.cuda_inference import replicate_pad
-ModuleNotFoundError: No module named 'src.layers'
+  File "/home/work/dcvc/miniconda3/envs/dcvc_rt_env/lib/python3.12/concurrent/futures/process.py", line 243, in _process_worker
+    initializer(*initargs)
+  File "/home/work/dcvc/DCVC_fresh/test_video.py", line 403, in init_func
+    i_frame_net.update(args.force_zero_thres)
+  File "/home/work/dcvc/DCVC_fresh/src/models/common_model.py", line 50, in update
+    self.entropy_coder = EntropyCoder()
+                         ^^^^^^^^^^^^^^
+  File "/home/work/dcvc/DCVC_fresh/src/models/entropy_models.py", line 15, in __init__
+    from MLCodec_extensions_cpp import RansEncoder, RansDecoder
+ModuleNotFoundError: No module named 'MLCodec_extensions_cpp'
+  0%|          | 0/212 [00:05<?, ?it/s]
+Traceback (most recent call last):
+  File "/home/work/dcvc/DCVC_fresh/test_video.py", line 541, in <module>
+    main()
+  File "/home/work/dcvc/DCVC_fresh/test_video.py", line 514, in main
+    result = obj.result()
+             ^^^^^^^^^^^^
+  File "/home/work/dcvc/miniconda3/envs/dcvc_rt_env/lib/python3.12/concurrent/futures/_base.py", line 456, in result
+    return self.__get_result()
+           ^^^^^^^^^^^^^^^^^^^
+  File "/home/work/dcvc/miniconda3/envs/dcvc_rt_env/lib/python3.12/concurrent/futures/_base.py", line 401, in __get_result
+    raise self._exception
+concurrent.futures.process.BrokenProcessPool: A process in the process pool was terminated abruptly while the future was running or pending.
+Return code: 1
