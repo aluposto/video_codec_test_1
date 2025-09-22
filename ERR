@@ -1,4 +1,49 @@
-Running: /home/work/dcvc/miniconda3/envs/dcvc_rt_env/bin/python test_video.py --model_path_i ./checkpoints/cvpr2025_image.pth.tar --model_path_p ./checkpoints/cvpr2025_video.pth.tar --rate_num 2 --test_config ./dataset_config_example_yuv420.json --cuda 0 -w 1 --write_stream 0 --save_decoded_frame 0 --force_zero_thres 0.12 --output_path output_smoke.json --force_intra_period -1 --reset_interval 64 --force_frame_num 2 --check_existing 0 --verbose 1
+# Re-run short smoke test with write_stream=1 (keeps small outputs), CPU, 2 frames
+from pathlib import Path
+import os, sys, subprocess
+
+repo_root = Path("/home/work/dcvc/DCVC_fresh").resolve()
+os.chdir(repo_root)
+env = os.environ.copy()
+env["PYTHONPATH"] = str(repo_root)
+
+cmd = [
+    sys.executable, "test_video.py",
+    "--model_path_i", "./checkpoints/cvpr2025_image.pth.tar",
+    "--model_path_p", "./checkpoints/cvpr2025_video.pth.tar",
+    "--rate_num", "2",
+    "--test_config", "./dataset_config_example_yuv420.json",
+    "--cuda", "0",               # CPU for smoke test
+    "-w", "1",
+    "--write_stream", "1",       # REQUIRED by worker assertion
+    "--save_decoded_frame", "0", # keep outputs small
+    "--force_zero_thres", "0.12",
+    "--output_path", "output_smoke.json",
+    "--force_intra_period", "-1",
+    "--reset_interval", "64",
+    "--force_frame_num", "2",
+    "--check_existing", "0",
+    "--verbose", "1",
+]
+
+print("Running:", " ".join(cmd))
+proc = subprocess.run(cmd, cwd=str(repo_root), env=env)
+print("Return code:", proc.returncode)
+
+outp = repo_root / "output_smoke.json"
+if outp.exists():
+    print("output_smoke.json (first 400 chars):")
+    print(outp.read_text()[:400])
+else:
+    print("No output_smoke.json produced.")
+
+
+
+
+
+
+
+Running: /home/work/dcvc/miniconda3/envs/dcvc_rt_env/bin/python test_video.py --model_path_i ./checkpoints/cvpr2025_image.pth.tar --model_path_p ./checkpoints/cvpr2025_video.pth.tar --rate_num 2 --test_config ./dataset_config_example_yuv420.json --cuda 0 -w 1 --write_stream 1 --save_decoded_frame 0 --force_zero_thres 0.12 --output_path output_smoke.json --force_intra_period -1 --reset_interval 64 --force_frame_num 2 --check_existing 0 --verbose 1
 cannot import cuda implementation for inference, fallback to pytorch.
 testing 2 rates, using qp: 0, 63, 
   0%|          | 0/106 [00:00<?, ?it/s]
@@ -10,10 +55,20 @@ Traceback (most recent call last):
   File "/home/work/dcvc/miniconda3/envs/dcvc_rt_env/lib/python3.12/concurrent/futures/process.py", line 264, in _process_worker
     r = call_item.fn(*call_item.args, **call_item.kwargs)
         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/work/dcvc/DCVC_fresh/test_video.py", line 360, in worker
-    assert args['write_stream'], ""
-           ~~~~^^^^^^^^^^^^^^^^
-AssertionError
+  File "/home/work/dcvc/DCVC_fresh/test_video.py", line 370, in worker
+    result = run_one_point_with_stream(p_frame_net, i_frame_net, args)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/work/dcvc/DCVC_fresh/test_video.py", line 175, in run_one_point_with_stream
+    torch.cuda.synchronize(device=device)
+  File "/home/work/dcvc/miniconda3/envs/dcvc_rt_env/lib/python3.12/site-packages/torch/cuda/__init__.py", line 1084, in synchronize
+    with torch.cuda.device(device):
+         ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/work/dcvc/miniconda3/envs/dcvc_rt_env/lib/python3.12/site-packages/torch/cuda/__init__.py", line 531, in __init__
+    self.idx = _get_device_index(device, optional=True)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/work/dcvc/miniconda3/envs/dcvc_rt_env/lib/python3.12/site-packages/torch/cuda/_utils.py", line 359, in _get_device_index
+    raise ValueError(f"Expected a cuda device, but got: {device}")
+ValueError: Expected a cuda device, but got: cpu
 """
 
 The above exception was the direct cause of the following exception:
@@ -29,6 +84,6 @@ Traceback (most recent call last):
            ^^^^^^^^^^^^^^^^^^^
   File "/home/work/dcvc/miniconda3/envs/dcvc_rt_env/lib/python3.12/concurrent/futures/_base.py", line 401, in __get_result
     raise self._exception
-AssertionError
+ValueError: Expected a cuda device, but got: cpu
 Return code: 1
 No output_smoke.json produced.
