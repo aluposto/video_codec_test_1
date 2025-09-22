@@ -1,26 +1,70 @@
-import json, pathlib
+# Now run test_video.py (same args as before)
+cmd = [
+    sys.executable, "test_video.py",
+    "--model_path_i", "./checkpoints/cvpr2025_image.pth.tar",
+    "--model_path_p", "./checkpoints/cvpr2025_video.pth.tar",
+    "--rate_num", "4",
+    "--test_config", "./dataset_config_example_yuv420.json",
+    "--cuda", "1",
+    "-w", "1",
+    "--write_stream", "1",
+    "--save_decoded_frame", "1",
+    "--force_zero_thres", "0.12",
+    "--output_path", "output.json",
+    "--force_intra_period", "-1",
+    "--reset_interval", "64",
+    "--force_frame_num", "-1",
+    "--check_existing", "0",
+    "--verbose", "1",
+]
 
-config_path = pathlib.Path("dataset_config_example_yuv420.json")
-cfg = json.loads(config_path.read_text())
-
-for seq in cfg:
-    if "UVG" in seq["src_path"]:
-        old = seq["src_path"]
-        seq["src_path"] = "./media/data/UVG/Beauty_1920x1080_120fps_420_8bit_YUV.yuv"
-        print("Patched:", old, "->", seq["src_path"])
-
-config_path.write_text(json.dumps(cfg, indent=2))
-print("Updated JSON:", config_path)
+print("Running test_video.py (this may take a while)...")
+proc = subprocess.run(cmd, cwd=str(repo_root), env=env)
+print("Return code:", proc.returncode)
 
 
 
----------------------------------------------------------------------------
-TypeError                                 Traceback (most recent call last)
-Cell In[43], line 7
-      4 cfg = json.loads(config_path.read_text())
-      6 for seq in cfg:
-----> 7     if "UVG" in seq["src_path"]:
-      8         old = seq["src_path"]
-      9         seq["src_path"] = "./media/data/UVG/Beauty_1920x1080_120fps_420_8bit_YUV.yuv"
+Running test_video.py (this may take a while)...
+cannot import cuda implementation for inference, fallback to pytorch.
+testing 4 rates, using qp: 0, 21, 42, 63, 
+  0%|          | 0/212 [00:00<?, ?it/s]
+cannot import cuda implementation for inference, fallback to pytorch.
+  0%|          | 0/212 [01:16<?, ?it/s]
+concurrent.futures.process._RemoteTraceback: 
+"""
+Traceback (most recent call last):
+  File "/home/work/dcvc/miniconda3/envs/dcvc_rt_env/lib/python3.12/concurrent/futures/process.py", line 264, in _process_worker
+    r = call_item.fn(*call_item.args, **call_item.kwargs)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/work/dcvc/DCVC_fresh/test_video.py", line 370, in worker
+    result = run_one_point_with_stream(p_frame_net, i_frame_net, args)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/work/dcvc/DCVC_fresh/test_video.py", line 279, in run_one_point_with_stream
+    decoded = i_frame_net.decompress(bit_stream, sps, qp)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/work/dcvc/DCVC_fresh/src/models/image_model.py", line 196, in decompress
+    self.bit_estimator_z.decode_z(z_size, qp)
+  File "/home/work/dcvc/DCVC_fresh/src/models/entropy_models.py", line 218, in decode_z
+    self.entropy_coder.decode_z(self.channel * size[0] * size[1], self.cdf_group_index,
+  File "/home/work/dcvc/DCVC_fresh/src/models/entropy_models.py", line 72, in decode_z
+    self.decoder.decode_z(total_size, cdf_group_index, start_offset, per_channel_size)
+  File "/home/work/dcvc/DCVC_fresh/src/python/codec_loader.py", line 60, in decode_z
+    self._lib.decode_z(total_size, cdf_group_index, start_offset, per_channel_size)
+    ^^^^^^^^^^^^^^^^^^
+AttributeError: 'RansDecoderLib' object has no attribute 'decode_z'. Did you mean: 'decode_y'?
+"""
 
-TypeError: string indices must be integers, not 'str'
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/home/work/dcvc/DCVC_fresh/test_video.py", line 541, in <module>
+    main()
+  File "/home/work/dcvc/DCVC_fresh/test_video.py", line 514, in main
+    result = obj.result()
+             ^^^^^^^^^^^^
+  File "/home/work/dcvc/miniconda3/envs/dcvc_rt_env/lib/python3.12/concurrent/futures/_base.py", line 456, in result
+    return self.__get_result()
+           ^^^^^^^^^^^^^^^^^^^
+  File "/home/work/dcvc/miniconda3/envs/dcvc_rt_env/lib/python3.12/concurrent/futures/_base.py", line 401, in __get_result
+    raise self._exception
+AttributeError: 'RansDecoderLib' object has no attribute 'decode_z'
