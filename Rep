@@ -1,128 +1,24 @@
-# Install simple pass-through shim so DCVC can run without C++ rANS
+# Patch simple shim to return int16 decoded tensor, reload and smoke-test
 from pathlib import Path
 import importlib, sys
 
 root = Path(".").resolve()
 file_path = root / "src" / "python" / "mlcodec_rans_py.py"
 
-simple_impl = r'''
-# Simple pass-through encoder/decoder shim for testing (no compression).
-# Keeps the same high-level API but does not perform entropy coding.
+# Read current file to ensure we only modify the get_decoded_tensor dtype
+txt = file_path.read_text()
 
-from typing import List
-import numpy as np
+# Replace the function that returns np.array(..., dtype=np.int8) to use int16
+new_txt = txt.replace("return np.array(self._decoded, dtype=np.int8)", "return np.array(self._decoded, dtype=np.int16)")
 
-def pmf_to_quantized_cdf(pmf: List[float], precision: int):
-    n = len(pmf)
-    if n == 0:
-        return [0, 1<<precision]
-    cdf = [0]
-    acc = 0
-    for p in pmf:
-        acc += max(1, int(round(p * (1<<precision))))
-        cdf.append(acc)
-    total = cdf[-1] if cdf[-1] > 0 else 1
-    cdf = [ int((x * (1<<precision)) // total) for x in cdf ]
-    cdf[-1] = 1<<precision
-    return cdf
-
-class RansEncoderLib:
-    def __init__(self):
-        self._stream = bytearray()
-        self._cdfs = []
-        self._pending = []
-
-    def add_cdf(self, cdfs, cdfs_sizes, offsets):
-        self._cdfs.append([list(row) for row in cdfs])
-        return len(self._cdfs) - 1
-
-    def empty_cdf_buffer(self):
-        self._cdfs.clear()
-
-    def encode_y(self, symbols, cdf_group_index):
-        arr = [int(x) for x in np.asarray(symbols).ravel().tolist()]
-        self._pending.append(("y", arr, int(cdf_group_index)))
-
-    def encode_z(self, symbols, cdf_group_index, start_offset, per_channel_size):
-        arr = [int(x) for x in np.asarray(symbols).ravel().tolist()]
-        self._pending.append(("z", arr, int(cdf_group_index), int(start_offset), int(per_channel_size)))
-
-    def flush(self):
-        out = bytearray()
-        for task in self._pending:
-            if task[0] == "y":
-                _, arr, grp = task
-                out.append(1)
-                out.append(grp & 0xff)
-                L = len(arr)
-                out += L.to_bytes(4, 'little')
-                for v in arr:
-                    out += int(v).to_bytes(2, 'little', signed=True)
-            else:
-                _, arr, grp, start_off, per_channel = task
-                out.append(2)
-                out.append(grp & 0xff)
-                L = len(arr)
-                out += L.to_bytes(4, 'little')
-                for v in arr:
-                    out += int(v).to_bytes(1, 'little', signed=True)
-        self._stream = bytes(out)
-        self._pending.clear()
-
-    def get_encoded_stream(self):
-        return bytes(self._stream)
-
-    def reset(self):
-        self._stream = bytearray()
-        self._pending.clear()
-
-class RansDecoderLib:
-    def __init__(self):
-        self._stream = bytearray()
-        self._ptr = 0
-        self._cdfs = []
-        self._decoded = []
-
-    def set_stream(self, encoded: bytes):
-        self._stream = bytearray(encoded)
-        self._ptr = 0
-
-    def add_cdf(self, cdfs, sizes, offsets):
-        self._cdfs.append([list(row) for row in cdfs])
-        return len(self._cdfs)-1
-
-    def decode_y(self, indexes, cdf_group_index):
-        out = []
-        ptr = 0
-        s = self._stream
-        while ptr < len(s):
-            marker = s[ptr]; ptr += 1
-            grp = s[ptr]; ptr += 1
-            L = int.from_bytes(s[ptr:ptr+4], 'little'); ptr += 4
-            if marker == 1:
-                for i in range(L):
-                    v = int.from_bytes(s[ptr:ptr+2], 'little', signed=True)
-                    ptr += 2
-                    out.append(v)
-            elif marker == 2:
-                for i in range(L):
-                    v = int.from_bytes(s[ptr:ptr+1], 'little', signed=True)
-                    ptr += 1
-                    out.append(v)
-        self._decoded = out[:len(indexes)]
-
-    def get_decoded_tensor(self):
-        return np.array(self._decoded, dtype=np.int8)
-'''
-
-file_path.write_text(simple_impl)
-print("Wrote simple shim to", file_path)
+file_path.write_text(new_txt)
+print("Patched get_decoded_tensor -> int16 in", file_path)
 
 # Unload stale modules
 to_unload = [m for m in list(sys.modules.keys()) if m.startswith("src.python") or m in ("mlcodec_rans_py","codec_loader")]
 for m in to_unload:
     sys.modules.pop(m, None)
-print("Unloaded", len(to_unload), "modules (preview):", to_unload[:6])
+print("Unloaded modules count:", len(to_unload))
 
 # Reload loader and test
 loader = importlib.import_module("src.python.codec_loader")
