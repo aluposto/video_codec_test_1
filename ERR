@@ -1,23 +1,8 @@
 Backend in use: py
-cdf index: 0
----------------------------------------------------------------------------
-TypeError                                 Traceback (most recent call last)
-Cell In[15], line 22
-     20 symbols = np.array([ (0 & 0xff) | (1 << 8), (0 & 0xff) | (2 << 8) ], dtype=np.int16)
-     21 enc.encode_y(symbols, idx)
----> 22 enc.flush()
-     23 stream = enc.get_encoded_stream()
-     24 print("Encoded stream len:", len(stream))
-
-File ~/dcvc/DCVC_fresh/src/python/codec_loader.py:26, in RansEncoder.flush(self)
-     25 def flush(self):
----> 26     self._lib.flush()
-
-File ~/dcvc/DCVC_fresh/src/python/mlcodec_rans_py.py:132, in RansEncoderLib.flush(self)
-    130 s = combined >> 8
-    131 entry = rans_sym_grp[cdf_idx]
---> 132 start = int(entry[0])
-    133 rng = int(entry[1])
-    134 r = RansEncPut(r, out, start, rng)
-
-TypeError: int() argument must be a string, a bytes-like object or a real number, not 'tuple'
+Returned cdf idx: 0
+Internal _lib type: <class 'src.python.mlcodec_rans_py.RansEncoderLib'>
+Type of _ransSymbols: <class 'list'>
+Length of _ransSymbols: 1
+First element type: <class 'list'>
+Sample length: 1
+  idx 0: type=<class 'list'>, repr=[(0, 819), (819, 2047), (2866, 1230)]
