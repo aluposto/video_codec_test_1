@@ -1,48 +1,48 @@
-You're nearly there — Python can't find the repository src package. That just means the process running test_video.py doesn't have the repo root on PYTHONPATH.
+# Create a shim module named MLCodec_extensions_cpp that wraps our Python fallback,
+# then re-run the same test command (subprocess) so worker processes can import it.
+from pathlib import Path
+import os, sys, importlib, subprocess, textwrap
 
-Below are short, copy-pasteable fixes. Pick the environment you want to use (Notebook or Terminal).
-
-
----
-
-Notebook (Jupyter) — recommended (3 cells)
-
-Cell A — ensure cwd and PYTHONPATH
-
-# Cell A: run this first (paste & execute)
-import os, sys
-repo_root = "/home/work/dcvc/DCVC_fresh"
+repo_root = Path("/home/work/dcvc/DCVC_fresh").resolve()
 os.chdir(repo_root)
-if repo_root not in sys.path:
-    sys.path.insert(0, repo_root)
-os.environ["PYTHONPATH"] = repo_root
-print("cwd:", os.getcwd())
-print("PYTHONPATH:", os.environ["PYTHONPATH"])
-print("src exists:", os.path.isdir(os.path.join(repo_root, "src")))
-print("src/layers exists:", os.path.isdir(os.path.join(repo_root, "src", "layers")))
+sys.path.insert(0, str(repo_root))
+os.environ["PYTHONPATH"] = str(repo_root)
 
-Cell B — quick import test
+shim_path = repo_root / "src" / "MLCodec_extensions_cpp.py"
+shim_code = r'''
+# Auto-generated shim to satisfy `import MLCodec_extensions_cpp`
+# Delegates to src.python.codec_loader Python fallback when C++ extension missing.
 
-# Cell B: confirms python can import the module that failed
+try:
+    # Prefer compiled extension if present
+    import importlib
+    ML = importlib.import_module("MLCodec_extensions_cpp")
+    # If we imported the compiled extension, we don't need this shim. But because
+    # this shim file itself is named MLCodec_extensions_cpp, this block won't run.
+except Exception:
+    # Import our fallback implementation
+    from src.python.codec_loader import RansEncoder as _RansEncoder, RansDecoder as _RansDecoder, pmf_to_quantized_cdf as _pmf
+    # Re-export the API expected by the code that imports MLCodec_extensions_cpp
+    RansEncoder = _RansEncoder
+    RansDecoder = _RansDecoder
+    pmf_to_quantized_cdf = _pmf
+'''
+
+# Write shim file (overwrite if exists)
+shim_path.write_text(shim_code)
+print("Wrote shim:", shim_path)
+
+# Confirm file exists and is importable
 import importlib, traceback
 try:
     importlib.invalidate_caches()
-    m = importlib.import_module("src.layers.cuda_inference")
-    print("Import OK:", m)
+    mod = importlib.import_module("MLCodec_extensions_cpp")
+    print("Imported shim module OK:", mod)
+    print("Attributes:", [a for a in ("RansEncoder","RansDecoder","pmf_to_quantized_cdf") if hasattr(mod,a)])
 except Exception:
     traceback.print_exc()
 
-If this prints an ImportError/ModuleNotFoundError, paste the traceback here.
-
-If it prints some other error (e.g. missing compiled .so inside src.layers), that means src.layers does exist — and the loader will fall back to Python backend automatically.
-
-
-Cell C — run test_video.py (with env for subprocess)
-
-# Cell C: run test_video.py from notebook so subprocess sees PYTHONPATH
-import subprocess, os, sys
-env = os.environ.copy()
-env["PYTHONPATH"] = os.getcwd()
+# Now run test_video.py (same command you used before). This will launch worker processes that import MLCodec_extensions_cpp.
 cmd = [
     sys.executable, "test_video.py",
     "--model_path_i", "./checkpoints/cvpr2025_image.pth.tar",
@@ -61,80 +61,9 @@ cmd = [
     "--check_existing", "0",
     "--verbose", "1",
 ]
-print("Running:", " ".join(cmd))
-proc = subprocess.run(cmd, cwd=os.getcwd(), env=env)
+
+print("Running test_video.py (this may take a while)...")
+env = os.environ.copy()
+env["PYTHONPATH"] = str(repo_root)
+proc = subprocess.run(cmd, cwd=str(repo_root), env=env)
 print("Return code:", proc.returncode)
-
-
----
-
-Terminal / SSH — if you prefer shell
-
-cd /home/work/dcvc/DCVC_fresh
-export PYTHONPATH="$(pwd)"          # make src importable
-python test_video.py \
-  --model_path_i ./checkpoints/cvpr2025_image.pth.tar \
-  --model_path_p ./checkpoints/cvpr2025_video.pth.tar \
-  --rate_num 4 \
-  --test_config ./dataset_config_example_yuv420.json \
-  --cuda 1 \
-  -w 1 \
-  --write_stream 1 \
-  --save_decoded_frame 1 \
-  --force_zero_thres 0.12 \
-  --output_path output.json \
-  --force_intra_period -1 \
-  --reset_interval 64 \
-  --force_frame_num -1 \
-  --check_existing 0 \
-  --verbose 1
-
-
----
-
-If you still get ModuleNotFoundError: No module named 'src.layers'
-
-1. Confirm src/layers exists:
-
-
-
-ls -la /home/work/dcvc/DCVC_fresh/src/layers
-
-2. If the directory is missing, you cloned into the wrong folder or truncated the repo. Re-clone or copy the src directory from the repo root.
-
-
-3. If src/layers exists but the import fails, run the notebook Cell B import test and paste the traceback here — that will tell me if cuda_inference tries to import a compiled extension and fails, or if Python truly can't find the folder.
-
-
-
-
----
-
-Force Python-only backend (optional, makes behavior deterministic)
-
-If you'd like to ensure the run never attempts to import compiled C++/CUDA modules at all, set an env var before running and I’ll show you how to make the loader respect it. Quick temporary approach: edit the top of src/python/codec_loader.py to immediately force the Python fallback:
-
-Open src/python/codec_loader.py and change the try/except to:
-
-# near top of file: force Python backend (temporary)
-USE_PY_FALLBACK = True
-
-if not USE_PY_FALLBACK:
-    try:
-        import importlib
-        ML = importlib.import_module("MLCodec_extensions_cpp")
-        ...
-    except Exception:
-        ...
-else:
-    # import the Python fallback implementation
-    from .mlcodec_rans_py import RansEncoderLib, RansDecoderLib, pmf_to_quantized_cdf as _pmf
-    ...
-
-If you want, I can produce a one-line patch cell that applies this change for you.
-
-
----
-
-Run the Notebook steps (A → B → C) or the Terminal commands, and paste any new tracebacks/output you get. I’ll follow up immediately with the precise next fix.
-
