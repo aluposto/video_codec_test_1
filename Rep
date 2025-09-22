@@ -1,48 +1,49 @@
-# Create a shim module named MLCodec_extensions_cpp that wraps our Python fallback,
-# then re-run the same test command (subprocess) so worker processes can import it.
+# Create top-level shim MLCodec_extensions_cpp.py and re-run test_video.py
 from pathlib import Path
-import os, sys, importlib, subprocess, textwrap
+import os, sys, importlib, subprocess, traceback
 
 repo_root = Path("/home/work/dcvc/DCVC_fresh").resolve()
 os.chdir(repo_root)
-sys.path.insert(0, str(repo_root))
-os.environ["PYTHONPATH"] = str(repo_root)
 
-shim_path = repo_root / "src" / "MLCodec_extensions_cpp.py"
+# Top-level shim path (module must be importable as 'MLCodec_extensions_cpp')
+top_shim = repo_root / "MLCodec_extensions_cpp.py"
 shim_code = r'''
-# Auto-generated shim to satisfy `import MLCodec_extensions_cpp`
-# Delegates to src.python.codec_loader Python fallback when C++ extension missing.
+# Top-level shim to satisfy `import MLCodec_extensions_cpp`
+# Delegates to src.python.codec_loader Python fallback when compiled extension missing.
 
 try:
-    # Prefer compiled extension if present
+    # If a compiled extension named MLCodec_extensions_cpp exists on sys.path this
+    # will import it; otherwise the except clause will run and we re-export the
+    # pure-Python fallback from src.python.codec_loader.
     import importlib
-    ML = importlib.import_module("MLCodec_extensions_cpp")
-    # If we imported the compiled extension, we don't need this shim. But because
-    # this shim file itself is named MLCodec_extensions_cpp, this block won't run.
+    _real = importlib.import_module("MLCodec_extensions_cpp")
+    # If this succeeded, re-export names from the real module:
+    RansEncoder = _real.RansEncoder
+    RansDecoder = _real.RansDecoder
+    pmf_to_quantized_cdf = getattr(_real, "pmf_to_quantized_cdf", None)
 except Exception:
-    # Import our fallback implementation
-    from src.python.codec_loader import RansEncoder as _RansEncoder, RansDecoder as _RansDecoder, pmf_to_quantized_cdf as _pmf
-    # Re-export the API expected by the code that imports MLCodec_extensions_cpp
-    RansEncoder = _RansEncoder
-    RansDecoder = _RansDecoder
-    pmf_to_quantized_cdf = _pmf
+    # Fallback: import the python implementation and re-export symbols
+    from src.python.codec_loader import RansEncoder as RansEncoder, RansDecoder as RansDecoder, pmf_to_quantized_cdf as pmf_to_quantized_cdf
 '''
 
-# Write shim file (overwrite if exists)
-shim_path.write_text(shim_code)
-print("Wrote shim:", shim_path)
+top_shim.write_text(shim_code)
+print("Wrote top-level shim:", top_shim)
 
-# Confirm file exists and is importable
-import importlib, traceback
+# Ensure repo root is on PYTHONPATH for subprocesses
+env = os.environ.copy()
+env["PYTHONPATH"] = str(repo_root)
+print("PYTHONPATH for subprocess:", env["PYTHONPATH"])
+
+# quick import test in this process
 try:
     importlib.invalidate_caches()
     mod = importlib.import_module("MLCodec_extensions_cpp")
-    print("Imported shim module OK:", mod)
-    print("Attributes:", [a for a in ("RansEncoder","RansDecoder","pmf_to_quantized_cdf") if hasattr(mod,a)])
+    print("Imported top-level shim OK:", mod)
+    print("Has RansEncoder:", hasattr(mod, "RansEncoder"), "Has RansDecoder:", hasattr(mod, "RansDecoder"))
 except Exception:
     traceback.print_exc()
 
-# Now run test_video.py (same command you used before). This will launch worker processes that import MLCodec_extensions_cpp.
+# Now run test_video.py (same args as before)
 cmd = [
     sys.executable, "test_video.py",
     "--model_path_i", "./checkpoints/cvpr2025_image.pth.tar",
@@ -63,7 +64,5 @@ cmd = [
 ]
 
 print("Running test_video.py (this may take a while)...")
-env = os.environ.copy()
-env["PYTHONPATH"] = str(repo_root)
 proc = subprocess.run(cmd, cwd=str(repo_root), env=env)
 print("Return code:", proc.returncode)
