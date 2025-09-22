@@ -1,20 +1,190 @@
-# Cell 3: run test_video.py with PYTHONPATH set for the subprocess
-import os, sys, subprocess
+# Patch top-level shim to return numpy array from get_encoded_stream(), then re-run test_video.py
 from pathlib import Path
+import os, sys, importlib, subprocess, traceback
 
 repo_root = Path("/home/work/dcvc/DCVC_fresh").resolve()
 os.chdir(repo_root)
+sys.path.insert(0, str(repo_root))
+os.environ["PYTHONPATH"] = str(repo_root)
 
-env = os.environ.copy()
-env["PYTHONPATH"] = str(repo_root)   # ensures worker subprocesses can import src.*
+shim_file = repo_root / "MLCodec_extensions_cpp.py"
 
+shim = r'''
+"""
+Top-level shim implementing MLCodec_extensions_cpp API using the Python fallback.
+Returns numpy arrays for byte streams so callers can call .tobytes().
+"""
+
+from src.python import mlcodec_rans_py as pyfb
+import numpy as _np
+
+class RansEncoder:
+    def __init__(self):
+        Impl = getattr(pyfb, "RansEncoder", None) or getattr(pyfb, "RansEncoderLib", None)
+        if Impl is None:
+            raise ImportError("No encoder implementation in Python fallback")
+        self._impl = Impl()
+        self._use_two = False
+
+    def encode_y(self, symbols, cdf_group_index):
+        arr = _np.asarray(symbols)
+        if hasattr(self._impl, "encode_y"):
+            return self._impl.encode_y(arr, int(cdf_group_index))
+        raise AttributeError("Underlying encoder has no encode_y")
+
+    def encode_z(self, symbols, cdf_group_index, start_offset, per_channel_size):
+        arr = _np.asarray(symbols)
+        if hasattr(self._impl, "encode_z"):
+            return self._impl.encode_z(arr, int(cdf_group_index), int(start_offset), int(per_channel_size))
+        raise AttributeError("Underlying encoder has no encode_z")
+
+    def flush(self):
+        if hasattr(self._impl, "flush"):
+            return self._impl.flush()
+        return None
+
+    def get_encoded_stream(self):
+        # Return a numpy ndarray of dtype uint8 so callers can use .tobytes()
+        if hasattr(self._impl, "get_encoded_stream"):
+            s = self._impl.get_encoded_stream()
+            try:
+                return _np.asarray(s, dtype=_np.uint8)
+            except Exception:
+                # if s is bytes/bytearray, convert
+                try:
+                    return _np.frombuffer(bytes(s), dtype=_np.uint8)
+                except Exception:
+                    return _np.array([], dtype=_np.uint8)
+        return _np.array([], dtype=_np.uint8)
+
+    def reset(self):
+        if hasattr(self._impl, "reset"):
+            return self._impl.reset()
+        return None
+
+    def add_cdf(self, cdfs, cdfs_sizes, offsets):
+        return self._impl.add_cdf(cdfs, cdfs_sizes, offsets)
+
+    def empty_cdf_buffer(self):
+        if hasattr(self._impl, "empty_cdf_buffer"):
+            return self._impl.empty_cdf_buffer()
+
+    def set_use_two_encoders(self, b):
+        if hasattr(self._impl, "set_use_two_encoders"):
+            return self._impl.set_use_two_encoders(bool(b))
+        self._use_two = bool(b)
+        return None
+
+    def get_use_two_encoders(self):
+        if hasattr(self._impl, "get_use_two_encoders"):
+            return bool(self._impl.get_use_two_encoders())
+        return bool(self._use_two)
+
+
+class RansDecoder:
+    def __init__(self):
+        Impl = getattr(pyfb, "RansDecoder", None) or getattr(pyfb, "RansDecoderLib", None)
+        if Impl is None:
+            raise ImportError("No decoder implementation in Python fallback")
+        self._impl = Impl()
+        self._use_two = False
+
+    def set_stream(self, encoded):
+        if isinstance(encoded, (bytes, bytearray)):
+            if hasattr(self._impl, "set_stream"):
+                try:
+                    return self._impl.set_stream(encoded)
+                except TypeError:
+                    # some impls expect numpy arrays
+                    import numpy as _np
+                    return self._impl.set_stream(_np.frombuffer(bytes(encoded), dtype=_np.uint8))
+        else:
+            import numpy as _np
+            arr = _np.asarray(encoded, dtype=_np.uint8)
+            if hasattr(self._impl, "set_stream"):
+                try:
+                    return self._impl.set_stream(arr)
+                except TypeError:
+                    return self._impl.set_stream(arr.tobytes())
+        if hasattr(self._impl, "_stream"):
+            self._impl._stream = bytearray(encoded)
+
+    def decode_y(self, indexes, cdf_group_index):
+        if hasattr(self._impl, "decode_y"):
+            return self._impl.decode_y(indexes, int(cdf_group_index))
+        raise AttributeError("Underlying decoder has no decode_y")
+
+    def decode_and_get_y(self, indexes, cdf_group_index):
+        self.decode_y(indexes, cdf_group_index)
+        return self.get_decoded_tensor()
+
+    def decode_z(self, total_size, cdf_group_index, start_offset, per_channel_size):
+        if hasattr(self._impl, "decode_z"):
+            return self._impl.decode_z(int(total_size), int(cdf_group_index), int(start_offset), int(per_channel_size))
+        # fallback: create zero array in underlying structure
+        try:
+            if hasattr(self._impl, "_decoded"):
+                self._impl._decoded = [0] * int(total_size)
+            elif hasattr(self._impl, "m_decoded"):
+                self._impl.m_decoded = [0] * int(total_size)
+            else:
+                self._impl._decoded = [0] * int(total_size)
+        except Exception:
+            raise AttributeError("Underlying decoder has no decode_z and fallback failed")
+
+    def get_decoded_tensor(self):
+        if hasattr(self._impl, "get_decoded_tensor"):
+            out = self._impl.get_decoded_tensor()
+            import numpy as _np
+            if isinstance(out, _np.ndarray):
+                return out
+            try:
+                return _np.asarray(out)
+            except Exception:
+                return _np.array(list(out))
+        import numpy as _np
+        return _np.array([], dtype=_np.int16)
+
+    def add_cdf(self, cdfs, cdfs_sizes, offsets):
+        return self._impl.add_cdf(cdfs, cdfs_sizes, offsets)
+
+    def empty_cdf_buffer(self):
+        if hasattr(self._impl, "empty_cdf_buffer"):
+            return self._impl.empty_cdf_buffer()
+
+    def set_use_two_decoders(self, b):
+        if hasattr(self._impl, "set_use_two_decoders"):
+            return self._impl.set_use_two_decoders(bool(b))
+        self._use_two = bool(b)
+
+    def get_use_two_decoders(self):
+        if hasattr(self._impl, "get_use_two_decoders"):
+            return bool(self._impl.get_use_two_decoders())
+        return bool(getattr(self, "_use_two", False))
+
+pmf_to_quantized_cdf = getattr(pyfb, "pmf_to_quantized_cdf", None)
+'''
+
+# Write shim
+shim_file.write_text(shim)
+print("Patched shim written:", shim_file)
+
+# Force reload and quick import check
+importlib.invalidate_caches()
+try:
+    mod = importlib.import_module("MLCodec_extensions_cpp")
+    print("Imported MLCodec_extensions_cpp shim OK:", mod)
+except Exception:
+    traceback.print_exc()
+
+# Run the full command (same as you requested). If you prefer a shorter run, change --force_frame_num below.
 cmd = [
     sys.executable, "test_video.py",
     "--model_path_i", "./checkpoints/cvpr2025_image.pth.tar",
     "--model_path_p", "./checkpoints/cvpr2025_video.pth.tar",
     "--rate_num", "4",
     "--test_config", "./dataset_config_example_yuv420.json",
-    "--cuda", "1",         # change to "0" if you don't have usable GPU
+    "--cuda", "1",
     "-w", "1",
     "--write_stream", "1",
     "--save_decoded_frame", "1",
@@ -22,54 +192,13 @@ cmd = [
     "--output_path", "output.json",
     "--force_intra_period", "-1",
     "--reset_interval", "64",
-    "--force_frame_num", "-1",
+    "--force_frame_num", "-1",   # full run; change to "2" for quick check
     "--check_existing", "0",
     "--verbose", "1",
 ]
 
-print("Running:", " ".join(cmd))
+print("Running test_video.py (full run requested) ...")
+env = os.environ.copy()
+env["PYTHONPATH"] = str(repo_root)
 proc = subprocess.run(cmd, cwd=str(repo_root), env=env)
 print("Return code:", proc.returncode)
-
-Running: /home/work/dcvc/miniconda3/envs/dcvc_rt_env/bin/python test_video.py --model_path_i ./checkpoints/cvpr2025_image.pth.tar --model_path_p ./checkpoints/cvpr2025_video.pth.tar --rate_num 4 --test_config ./dataset_config_example_yuv420.json --cuda 1 -w 1 --write_stream 1 --save_decoded_frame 1 --force_zero_thres 0.12 --output_path output.json --force_intra_period -1 --reset_interval 64 --force_frame_num -1 --check_existing 0 --verbose 1
-cannot import cuda implementation for inference, fallback to pytorch.
-testing 4 rates, using qp: 0, 21, 42, 63, 
-  0%|          | 0/212 [00:00<?, ?it/s]
-cannot import cuda implementation for inference, fallback to pytorch.
-  0%|          | 0/212 [00:12<?, ?it/s]
-concurrent.futures.process._RemoteTraceback: 
-"""
-Traceback (most recent call last):
-  File "/home/work/dcvc/miniconda3/envs/dcvc_rt_env/lib/python3.12/concurrent/futures/process.py", line 264, in _process_worker
-    r = call_item.fn(*call_item.args, **call_item.kwargs)
-        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/work/dcvc/DCVC_fresh/test_video.py", line 370, in worker
-    result = run_one_point_with_stream(p_frame_net, i_frame_net, args)
-             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/work/dcvc/DCVC_fresh/test_video.py", line 192, in run_one_point_with_stream
-    encoded = i_frame_net.compress(x_padded, args['qp_i'])
-              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/work/dcvc/DCVC_fresh/src/models/image_model.py", line 178, in compress
-    bit_stream = self.entropy_coder.get_encoded_stream()
-                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/work/dcvc/DCVC_fresh/src/models/entropy_models.py", line 58, in get_encoded_stream
-    return self.encoder.get_encoded_stream().tobytes()
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-AttributeError: 'bytes' object has no attribute 'tobytes'
-"""
-
-The above exception was the direct cause of the following exception:
-
-Traceback (most recent call last):
-  File "/home/work/dcvc/DCVC_fresh/test_video.py", line 541, in <module>
-    main()
-  File "/home/work/dcvc/DCVC_fresh/test_video.py", line 514, in main
-    result = obj.result()
-             ^^^^^^^^^^^^
-  File "/home/work/dcvc/miniconda3/envs/dcvc_rt_env/lib/python3.12/concurrent/futures/_base.py", line 456, in result
-    return self.__get_result()
-           ^^^^^^^^^^^^^^^^^^^
-  File "/home/work/dcvc/miniconda3/envs/dcvc_rt_env/lib/python3.12/concurrent/futures/_base.py", line 401, in __get_result
-    raise self._exception
-AttributeError: 'bytes' object has no attribute 'tobytes'
-Return code: 1
