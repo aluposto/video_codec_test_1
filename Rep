@@ -1,40 +1,71 @@
-Perfect 👌 — since you’ve placed the file at
+Nice — your JSON structure is clear. Two small, safe edits will fix the paths so test_video.py finds your YUV file:
 
-/home/work/dcvc/DCVC_fresh/media/data/UVG/Beauty_1920x1080_120fps_420_8bit_YUV.yuv
-
-but your dataset_config_example_yuv420.json still points to
-
-/media/data/UVG/Beauty_1920x1080_120fps_420_8bit_YUV.yuv
-
-you just need to patch the JSON so it uses the correct relative path inside your repo.
+1. set "root_path" to the repo-local path ("./media/data/"), and
 
 
----
+2. ensure the specific UVG sequence entry (the filename key) remains the same (no filename change needed) — the code that constructs the full path uses root_path + base_path + filename.
 
-✅ Fix dataset config
 
-Run this in your notebook (repo root):
 
-import json, pathlib
-
-config_path = pathlib.Path("dataset_config_example_yuv420.json")
-cfg = json.loads(config_path.read_text())
-
-for seq in cfg:
-    if "UVG" in seq["src_path"]:
-        old = seq["src_path"]
-        seq["src_path"] = "./media/data/UVG/Beauty_1920x1080_120fps_420_8bit_YUV.yuv"
-        print("Patched:", old, "->", seq["src_path"])
-
-config_path.write_text(json.dumps(cfg, indent=2))
-print("Updated JSON:", config_path)
+I’ll give you a single safe notebook cell to run (it makes a backup of the JSON first). After that I’ll show the quick smoke-test command you should run (2 frames, CPU) so you can confirm everything works.
 
 
 ---
 
-✅ Test with a few frames first
+Step A — Patch dataset_config_example_yuv420.json (run this in your notebook from repo root)
 
-Instead of processing the whole 120fps clip, run a quick test:
+# Run this in a notebook cell while your current working directory is:
+# /home/work/dcvc/DCVC_fresh
+from pathlib import Path
+import json, shutil
+
+repo_root = Path.cwd()
+cfg_path = repo_root / "dataset_config_example_yuv420.json"
+bak_path = cfg_path.with_suffix(".json.bak")
+
+# backup
+shutil.copy2(cfg_path, bak_path)
+print("Backup created at:", bak_path)
+
+# load
+cfg = json.loads(cfg_path.read_text())
+
+# 1) change root_path to repo-local media/data
+old_root = cfg.get("root_path", None)
+cfg["root_path"] = "./media/data/"
+print("root_path:", old_root, "->", cfg["root_path"])
+
+# 2) sanity check: ensure UVG base_path exists under media/data
+uvg = cfg.get("test_classes", {}).get("UVG", {})
+base_path = uvg.get("base_path", "UVG")
+print("UVG base_path:", base_path)
+
+# Print whether the file you mentioned exists at expected location
+expected = repo_root / "media" / "data" / base_path / "Beauty_1920x1080_120fps_420_8bit_YUV.yuv"
+print("Expected file path:", expected)
+print("Exists?:", expected.exists())
+
+# write back
+cfg_path.write_text(json.dumps(cfg, indent=2))
+print("Patched config written to:", cfg_path)
+
+This does:
+
+back up the original JSON as dataset_config_example_yuv420.json.bak,
+
+set root_path to "./media/data/" (relative to repo root),
+
+print whether the file exists at the computed location.
+
+
+If the Exists? line prints True, you’re set.
+
+
+---
+
+Step B — Quick smoke test (run 2 frames, CPU-only)
+
+From the notebook you can run this subprocess call (or from terminal after cd /home/work/dcvc/DCVC_fresh):
 
 python test_video.py \
   --model_path_i ./checkpoints/cvpr2025_image.pth.tar \
@@ -53,17 +84,37 @@ python test_video.py \
   --check_existing 0 \
   --verbose 1
 
-That will process only 2 frames using CPU only → quick sanity check.
+Notes:
+
+--cuda 0 uses CPU so you can test without GPU.
+
+--force_frame_num 2 processes only 2 frames — quick test.
+
+--rate_num 1 keeps it to a single rate for speed.
+
 
 
 ---
 
-✅ Then run the full job
+If the file still isn’t found
 
-If the small run works, remove --force_frame_num 2 and set --cuda 1 if you want GPU.
+If the Exists? print was False, double-check:
+
+ls -l media/data/UVG/Beauty_1920x1080_120fps_420_8bit_YUV.yuv
+
+If it’s in a slightly different path (e.g., media/data/UVG/Beauty_... vs /home/work/dcvc/DCVC_fresh/media/data/UVG/...), tell me the exact ls output and I’ll adjust the JSON patch snippet to point to that exact path.
 
 
 ---
 
-Do you want me to also show you how to limit the resolution or crop the YUV so tests run faster, instead of full 1080p?
+Want to run the commands and paste output?
+
+Run the JSON patch cell, then run the smoke-test. Paste the printed Exists? value and either:
+
+the test_video.py output if it fails, or
+
+“worked” if it completed the 2-frame run.
+
+
+I’ll act on the result immediately and help get the full run working if you want to proceed beyond the smoke test.
 
