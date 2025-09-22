@@ -1,28 +1,28 @@
-Wrote: /home/work/dcvc/DCVC_fresh/src/python/mlcodec_rans_py.py
-Unloaded 3 modules (preview): ['src.python', 'src.python.mlcodec_rans_py', 'src.python.codec_loader']
-Backend in use after reload: py
+Patched file written: /home/work/dcvc/DCVC_fresh/src/python/mlcodec_rans_py.py
+Unloaded modules count: 3
+Backend after reload: py
 cdf index: 0
 Encoded stream len: 5
 Encoded bytes: [3, 84, 10, 146, 58]
 ---------------------------------------------------------------------------
 IndexError                                Traceback (most recent call last)
-Cell In[4], line 254
-    252 dec.add_cdf(cdfs_arr, cdfs_sizes, offsets)
-    253 dec.set_stream(stream)
---> 254 dec.decode_y(np.array([0,0], dtype=np.uint8), idx)
-    255 out = dec.get_decoded_tensor()
-    256 print("Decoded result:", out.tolist())
+Cell In[6], line 293
+    291 dec.add_cdf(cdfs_arr, cdfs_sizes, offsets)
+    292 dec.set_stream(stream)
+--> 293 dec.decode_y(np.array([0,0], dtype=np.uint8), idx)
+    294 out = dec.get_decoded_tensor()
+    295 print("Decoded result:", out.tolist())
 
 File ~/dcvc/DCVC_fresh/src/python/codec_loader.py:55, in RansDecoder.decode_y(self, indexes, cdf_group_index)
      53 import numpy as _np
      54 idxs = list(_np.asarray(indexes, dtype=_np.uint8).ravel())
 ---> 55 self._lib.decode_y(idxs, int(cdf_group_index))
 
-File ~/dcvc/DCVC_fresh/src/python/mlcodec_rans_py.py:200, in RansDecoderLib.decode_y(self, indexes, cdf_group_index)
-    198 s -= 1
-    199 start = int(cdf[s])
---> 200 rng = int(cdf[s+1] - cdf[s])
-    201 self._rans, self._ptr = RansDecAdvance(self._rans, self._stream, self._ptr, start, rng)
-    202 decoded.append(int(s + offsets[idx]))
+File ~/dcvc/DCVC_fresh/src/python/mlcodec_rans_py.py:238, in RansDecoderLib.decode_y(self, indexes, cdf_group_index)
+    236 s -= 1
+    237 start = int(cdf[s])
+--> 238 rng = int(cdf[s+1] - cdf[s])
+    239 self._rans, self._ptr = RansDecAdvance(self._rans, self._stream, self._ptr, start, rng)
+    240 decoded.append(int(s + offsets[idx]))
 
 IndexError: list index out of range
