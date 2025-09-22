@@ -1,132 +1,118 @@
-Got it — you want the full run, not a smoke test. The recent failure ValueError: Expected a cuda device, but got: cpu shows the program is still calling CUDA APIs (e.g. torch.cuda.synchronize(device=device)) even when you passed --cuda 0. Two safe paths forward — pick one:
+Great — here are three ready-to-run notebook cells (one after another). They do:
 
-Option 1 — Run the full job on GPU (recommended if you have a working CUDA GPU & drivers)
-This avoids code changes and gives much faster, correct execution.
-
-1. Verify GPU and CUDA are available in this environment:
+1. Quick environment & import checks (makes sure src.layers.cuda_inference is importable).
 
 
+2. Check PyTorch/CUDA availability.
 
-# In terminal / notebook cell
-nvidia-smi || true
-python - <<'PY'
+
+3. Run test_video.py in a subprocess with PYTHONPATH correctly set so worker processes inherit it.
+
+
+
+Run them in order (each in its own cell). Paste the outputs if anything errors and I’ll debug the next step.
+
+
+---
+
+Cell 1 — verify src.layers import and show repo layout
+
+# Cell 1: verify importability of src.layers and list key files
+from pathlib import Path
+import importlib, os, sys, traceback
+
+repo_root = Path("/home/work/dcvc/DCVC_fresh").resolve()
+print("Repo root:", repo_root)
+os.chdir(repo_root)
+
+print("\nRepo listing (top-level):")
+print([p.name for p in sorted(repo_root.iterdir()) if p.exists()])
+
+print("\nChecking src and src/layers presence:")
+print("src exists:", (repo_root / "src").exists())
+print("src/layers exists:", (repo_root / "src" / "layers").exists())
+
+# Attempt import with repo root on sys.path (for the notebook process)
+sys.path.insert(0, str(repo_root))
+try:
+    m = importlib.import_module("src.layers.cuda_inference")
+    print("\nImported src.layers.cuda_inference OK:", m)
+except Exception as e:
+    print("\nImport failed for src.layers.cuda_inference:")
+    traceback.print_exc()
+    # Show files under src/layers to help diagnose
+    layers_dir = repo_root / "src" / "layers"
+    if layers_dir.exists():
+        print("\nFiles in src/layers:")
+        for p in sorted(layers_dir.iterdir()):
+            print(" ", p.name)
+    else:
+        print("\nsrc/layers not found on disk.")
+
+
+---
+
+Cell 2 — check PyTorch + CUDA status
+
+# Cell 2: check torch and CUDA availability from notebook env
 import torch, sys
-print("torch:", torch.__version__)
+print("Python:", sys.version.splitlines()[0])
+print("torch:", getattr(torch, "__version__", "<not installed>"))
 print("cuda available:", torch.cuda.is_available())
-print("cuda device count:", torch.cuda.device_count())
-if torch.cuda.is_available():
-    print("current device:", torch.cuda.current_device())
-    print("device name:", torch.cuda.get_device_name(torch.cuda.current_device()))
-PY
-
-If torch.cuda.is_available() prints True and device_count ≥ 1, proceed.
-
-2. Run the full job (GPU). From repo root:
-
-
-
-export PYTHONPATH="$(pwd)"
-python test_video.py \
-  --model_path_i ./checkpoints/cvpr2025_image.pth.tar \
-  --model_path_p ./checkpoints/cvpr2025_video.pth.tar \
-  --rate_num 4 \
-  --test_config ./dataset_config_example_yuv420.json \
-  --cuda 1 \
-  -w 1 \
-  --write_stream 1 \
-  --save_decoded_frame 1 \
-  --force_zero_thres 0.12 \
-  --output_path output.json \
-  --force_intra_period -1 \
-  --reset_interval 64 \
-  --force_frame_num -1 \
-  --check_existing 0 \
-  --verbose 1
-
-Notes:
-
---cuda 1 enables GPU device indexing. If you have multiple GPUs you can pass a different index.
-
--w 1 spawns 1 worker process; increase if you want parallel processing (but beware memory).
-
-The full run will be slow/long depending on video length and models.
-
-
-If you still get torch.cuda.is_available() == False or nvidia-smi fails, your environment lacks a functioning CUDA GPU/drivers — use Option 2.
+try:
+    print("cuda device count:", torch.cuda.device_count())
+    if torch.cuda.is_available() and torch.cuda.device_count()>0:
+        print("current device index:", torch.cuda.current_device())
+        print("device name:", torch.cuda.get_device_name(torch.cuda.current_device()))
+except Exception as e:
+    print("CUDA check error:", type(e).__name__, e)
 
 
 ---
 
-Option 2 — Run full job on CPU (works but slow).
-The repo currently assumes CUDA device objects in several places and calls torch.cuda.synchronize(device=device) unguarded. Two ways:
+Cell 3 — run test_video.py (subprocess) with PYTHONPATH set for subprocesses
 
-A. Patch test_video.py to avoid calling CUDA functions when --cuda 0. Add a guard around the torch.cuda.synchronize(...) call so it only runs when CUDA is enabled.
+> NOTE: this runs the full command you specified earlier with --cuda 1. If you don’t have a functional GPU (torch.cuda.is_available() was False), change "--cuda", "1" to "--cuda", "0" in the cmd list below before running.
 
-Open test_video.py and find the torch.cuda.synchronize(device=device) line (you saw it in the traceback around line ~175). Replace it with:
 
-if args.cuda and torch.cuda.is_available():
-    torch.cuda.synchronize(device=device)
 
-(If device is a string like "cpu", make sure it becomes a device index only when args.cuda.)
+# Cell 3: run test_video.py with PYTHONPATH set for the subprocess
+import os, sys, subprocess
+from pathlib import Path
 
-You can apply the patch with this one-liner in the repo root (safe, small edit):
+repo_root = Path("/home/work/dcvc/DCVC_fresh").resolve()
+os.chdir(repo_root)
 
-# from repo root
-python - <<'PY'
-p="test_video.py"
-s=open(p).read()
-s=s.replace("torch.cuda.synchronize(device=device)","if args.cuda and torch.cuda.is_available():\\n        torch.cuda.synchronize(device=device)")
-open(p,"w").write(s)
-print("Patched",p)
-PY
+env = os.environ.copy()
+env["PYTHONPATH"] = str(repo_root)   # ensures worker subprocesses can import src.*
 
-Then run the full job on CPU:
+cmd = [
+    sys.executable, "test_video.py",
+    "--model_path_i", "./checkpoints/cvpr2025_image.pth.tar",
+    "--model_path_p", "./checkpoints/cvpr2025_video.pth.tar",
+    "--rate_num", "4",
+    "--test_config", "./dataset_config_example_yuv420.json",
+    "--cuda", "1",         # change to "0" if you don't have usable GPU
+    "-w", "1",
+    "--write_stream", "1",
+    "--save_decoded_frame", "1",
+    "--force_zero_thres", "0.12",
+    "--output_path", "output.json",
+    "--force_intra_period", "-1",
+    "--reset_interval", "64",
+    "--force_frame_num", "-1",
+    "--check_existing", "0",
+    "--verbose", "1",
+]
 
-export PYTHONPATH="$(pwd)"
-python test_video.py \
-  --model_path_i ./checkpoints/cvpr2025_image.pth.tar \
-  --model_path_p ./checkpoints/cvpr2025_video.pth.tar \
-  --rate_num 4 \
-  --test_config ./dataset_config_example_yuv420.json \
-  --cuda 0 \
-  -w 1 \
-  --write_stream 1 \
-  --save_decoded_frame 1 \
-  --force_zero_thres 0.12 \
-  --output_path output.json \
-  --force_intra_period -1 \
-  --reset_interval 64 \
-  --force_frame_num -1 \
-  --check_existing 0 \
-  --verbose 1
-
-B. (Alternative) Run with --cuda 1 but set CUDA_VISIBLE_DEVICES= to empty — this will still confuse torch because CUDA isn't available; not recommended.
+print("Running:", " ".join(cmd))
+proc = subprocess.run(cmd, cwd=str(repo_root), env=env)
+print("Return code:", proc.returncode)
 
 
 ---
 
-Important practical notes / long-term recommendations
+If you want the notebook to run the full job on CPU instead, edit the third cell: change the "--cuda", "1" token pair to "--cuda", "0" before running.
 
-Accuracy / bitstream correctness: Right now you’re using a Python shim fallback for MLCodec_extensions_cpp. That can make the pipeline run but may not produce the same bit-exact streams or performance as the compiled C++ extension. For production correctness and performance you should compile the C++ extension in a compatible build env (recommended Python 3.10/3.11). I can give exact conda commands for your CUDA version and help build it.
-
-Performance: Full video runs at 1080p/120fps are compute-heavy. Use GPU and increase worker count (-w) carefully only if memory allows.
-
-Outputs: The run writes a lot of data (out_bin/*, decoded frames if enabled). Make sure you have disk space.
-
-If you want me to run the full command now — I can’t run things on your machine; run the exact command above in your terminal/notebook. If it errors, paste the last 60–120 lines of output and I’ll debug the next issue (CUDA driver mismatch, missing extension, out-of-memory, missing files, etc.).
-
-
-
----
-
-Which path do you want to take now?
-
-GPU — I’ll help verify CUDA and then you run the full --cuda 1 command. (Tell me the nvidia-smi + torch.cuda.is_available() outputs.)
-
-CPU — I’ll apply the test_video.py guard patch (I provided the one-liner) and you can run the full CPU job (expect it to be slow).
-
-Build C++ extension — I’ll provide exact conda commands to create a build env (Python 3.10/3.11), build MLCodec_extensions_cpp, and how to use it from your current env.
-
-
-Tell me which and I’ll give the exact next command(s).
+Run Cell 1 and Cell 2 first — if either shows an error (especially Cell 1 import error or Cell 2 shows CUDA unavailable while you expect a GPU), paste that output and I’ll give the exact next fix (guard, environment tweak, or GPU troubleshooting).
 
