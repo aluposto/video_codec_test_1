@@ -1,135 +1,26 @@
-# Create top-level shim MLCodec_extensions_cpp.py and re-run test_video.py
-from pathlib import Path
-import os, sys, importlib, subprocess, traceback
+import json, pathlib
 
-repo_root = Path("/home/work/dcvc/DCVC_fresh").resolve()
-os.chdir(repo_root)
+config_path = pathlib.Path("dataset_config_example_yuv420.json")
+cfg = json.loads(config_path.read_text())
 
-# Top-level shim path (module must be importable as 'MLCodec_extensions_cpp')
-top_shim = repo_root / "MLCodec_extensions_cpp.py"
-shim_code = r'''
-# Top-level shim to satisfy `import MLCodec_extensions_cpp`
-# Delegates to src.python.codec_loader Python fallback when compiled extension missing.
+for seq in cfg:
+    if "UVG" in seq["src_path"]:
+        old = seq["src_path"]
+        seq["src_path"] = "./media/data/UVG/Beauty_1920x1080_120fps_420_8bit_YUV.yuv"
+        print("Patched:", old, "->", seq["src_path"])
 
-try:
-    # If a compiled extension named MLCodec_extensions_cpp exists on sys.path this
-    # will import it; otherwise the except clause will run and we re-export the
-    # pure-Python fallback from src.python.codec_loader.
-    import importlib
-    _real = importlib.import_module("MLCodec_extensions_cpp")
-    # If this succeeded, re-export names from the real module:
-    RansEncoder = _real.RansEncoder
-    RansDecoder = _real.RansDecoder
-    pmf_to_quantized_cdf = getattr(_real, "pmf_to_quantized_cdf", None)
-except Exception:
-    # Fallback: import the python implementation and re-export symbols
-    from src.python.codec_loader import RansEncoder as RansEncoder, RansDecoder as RansDecoder, pmf_to_quantized_cdf as pmf_to_quantized_cdf
-'''
-
-top_shim.write_text(shim_code)
-print("Wrote top-level shim:", top_shim)
-
-# Ensure repo root is on PYTHONPATH for subprocesses
-env = os.environ.copy()
-env["PYTHONPATH"] = str(repo_root)
-print("PYTHONPATH for subprocess:", env["PYTHONPATH"])
-
-# quick import test in this process
-try:
-    importlib.invalidate_caches()
-    mod = importlib.import_module("MLCodec_extensions_cpp")
-    print("Imported top-level shim OK:", mod)
-    print("Has RansEncoder:", hasattr(mod, "RansEncoder"), "Has RansDecoder:", hasattr(mod, "RansDecoder"))
-except Exception:
-    traceback.print_exc()
-
-# Now run test_video.py (same args as before)
-cmd = [
-    sys.executable, "test_video.py",
-    "--model_path_i", "./checkpoints/cvpr2025_image.pth.tar",
-    "--model_path_p", "./checkpoints/cvpr2025_video.pth.tar",
-    "--rate_num", "4",
-    "--test_config", "./dataset_config_example_yuv420.json",
-    "--cuda", "1",
-    "-w", "1",
-    "--write_stream", "1",
-    "--save_decoded_frame", "1",
-    "--force_zero_thres", "0.12",
-    "--output_path", "output.json",
-    "--force_intra_period", "-1",
-    "--reset_interval", "64",
-    "--force_frame_num", "-1",
-    "--check_existing", "0",
-    "--verbose", "1",
-]
-
-print("Running test_video.py (this may take a while)...")
-proc = subprocess.run(cmd, cwd=str(repo_root), env=env)
-print("Return code:", proc.returncode)
+config_path.write_text(json.dumps(cfg, indent=2))
+print("Updated JSON:", config_path)
 
 
 
+---------------------------------------------------------------------------
+TypeError                                 Traceback (most recent call last)
+Cell In[43], line 7
+      4 cfg = json.loads(config_path.read_text())
+      6 for seq in cfg:
+----> 7     if "UVG" in seq["src_path"]:
+      8         old = seq["src_path"]
+      9         seq["src_path"] = "./media/data/UVG/Beauty_1920x1080_120fps_420_8bit_YUV.yuv"
 
-
-
-
-
-
-
-
-
-
-
-
-Wrote top-level shim: /home/work/dcvc/DCVC_fresh/MLCodec_extensions_cpp.py
-PYTHONPATH for subprocess: /home/work/dcvc/DCVC_fresh
-Imported top-level shim OK: <module 'MLCodec_extensions_cpp' from '/home/work/dcvc/DCVC_fresh/MLCodec_extensions_cpp.py'>
-Has RansEncoder: True Has RansDecoder: True
-Running test_video.py (this may take a while)...
-cannot import cuda implementation for inference, fallback to pytorch.
-testing 4 rates, using qp: 0, 21, 42, 63, 
-  0%|          | 0/212 [00:00<?, ?it/s]
-cannot import cuda implementation for inference, fallback to pytorch.
-created folder: out_bin/UVG
-created folder: out_bin/MCL-JCV
-created folder: out_bin/HEVC_B
-created folder: out_bin/HEVC_E
-created folder: out_bin/HEVC_C
-created folder: out_bin/HEVC_D
-  0%|          | 0/212 [00:08<?, ?it/s]
-concurrent.futures.process._RemoteTraceback: 
-"""
-Traceback (most recent call last):
-  File "/home/work/dcvc/miniconda3/envs/dcvc_rt_env/lib/python3.12/concurrent/futures/process.py", line 264, in _process_worker
-    r = call_item.fn(*call_item.args, **call_item.kwargs)
-        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/work/dcvc/DCVC_fresh/test_video.py", line 370, in worker
-    result = run_one_point_with_stream(p_frame_net, i_frame_net, args)
-             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/work/dcvc/DCVC_fresh/test_video.py", line 147, in run_one_point_with_stream
-    src_reader = get_src_reader(args)
-                 ^^^^^^^^^^^^^^^^^^^^
-  File "/home/work/dcvc/DCVC_fresh/test_video.py", line 70, in get_src_reader
-    src_reader = YUV420Reader(args['src_path'], args['src_width'], args['src_height'])
-                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/work/dcvc/DCVC_fresh/src/utils/video_reader.py", line 64, in __init__
-    self.file = open(src_path, "rb")
-                ^^^^^^^^^^^^^^^^^^^^
-FileNotFoundError: [Errno 2] No such file or directory: '/media/data/UVG/Beauty_1920x1080_120fps_420_8bit_YUV.yuv'
-"""
-
-The above exception was the direct cause of the following exception:
-
-Traceback (most recent call last):
-  File "/home/work/dcvc/DCVC_fresh/test_video.py", line 541, in <module>
-    main()
-  File "/home/work/dcvc/DCVC_fresh/test_video.py", line 514, in main
-    result = obj.result()
-             ^^^^^^^^^^^^
-  File "/home/work/dcvc/miniconda3/envs/dcvc_rt_env/lib/python3.12/concurrent/futures/_base.py", line 456, in result
-    return self.__get_result()
-           ^^^^^^^^^^^^^^^^^^^
-  File "/home/work/dcvc/miniconda3/envs/dcvc_rt_env/lib/python3.12/concurrent/futures/_base.py", line 401, in __get_result
-    raise self._exception
-FileNotFoundError: [Errno 2] No such file or directory: '/media/data/UVG/Beauty_1920x1080_120fps_420_8bit_YUV.yuv'
-Return code: 1
+TypeError: string indices must be integers, not 'str'
