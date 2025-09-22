@@ -1,38 +1,37 @@
-Perfect — let’s wire that up so you can run test_video.py with the shim backend.
+Got it 👍
+Since you’re running inside Jupyter/IPython (no sudo, Python-only fallback), here are the clean instructions:
 
 
 ---
 
-1. Check that you’re in the right directory
-
-From terminal:
+Step 1 – Move to repo root
 
 cd /home/work/dcvc/DCVC_fresh
-ls test_video.py
-
-Make sure test_video.py exists there.
 
 
 ---
 
-2. Verify checkpoints & config
+Step 2 – Make sure Python sees the repo
 
-From repo root, check that the files you reference exist:
+In your notebook, first cell:
 
-ls checkpoints/cvpr2025_image.pth.tar
-ls checkpoints/cvpr2025_video.pth.tar
-ls dataset_config_example_yuv420.json
+import sys, os
+# Add repo root so "src" can be imported
+repo_root = "/home/work/dcvc/DCVC_fresh"
+if repo_root not in sys.path:
+    sys.path.insert(0, repo_root)
+os.environ["PYTHONPATH"] = repo_root
 
-If they don’t exist, you’ll need to download or adjust paths.
+print("PYTHONPATH set ->", os.environ["PYTHONPATH"])
 
 
 ---
 
-3. Run the command
+Step 3 – Run test_video with your arguments
 
-From repo root (/home/work/dcvc/DCVC_fresh), with your conda env activated (dcvc_rt_env):
+In a new cell:
 
-python test_video.py \
+!python test_video.py \
   --model_path_i ./checkpoints/cvpr2025_image.pth.tar \
   --model_path_p ./checkpoints/cvpr2025_video.pth.tar \
   --rate_num 4 \
@@ -40,36 +39,29 @@ python test_video.py \
   --cuda 1 \
   -w 1 \
   --write_stream 1 \
+  --save_decoded_frame 1 \
   --force_zero_thres 0.12 \
   --output_path output.json \
   --force_intra_period -1 \
   --reset_interval 64 \
   --force_frame_num -1 \
   --check_existing 0 \
-  --verbose 0
+  --verbose 1
 
 
 ---
 
-4. Expected behavior with shim
+✅ With this setup:
 
-The run should proceed (no C++ build errors).
+If compiled C++/CUDA modules are missing → the loader falls back to Python backend (mlcodec_rans_py.py).
 
-Caveat: The “bitstream” written will be from the shim (no real compression). So reported bitrate, PSNR/SSIM, etc. won’t reflect the true DCVC numbers.
+You should see Backend in use: py in the logs.
 
-But functionally: model loads, frames process, JSON results should be written to output.json.
+No sudo or distutils needed.
 
 
 
 ---
 
-✅ Next step for you:
-Run the command above in your terminal, then paste here:
-
-whether it started running (did you see progress output?),
-
-and if it crashes, copy the traceback so I can patch the shim or the loader.
-
-
-Do you want me to also prep a shorter “debug run” command (e.g., forcing it to only process 2–3 frames quickly) so you don’t need to wait for a full video pass?
+Do you want me to also give you a “force Python-only” switch (so it never even tries the C++/CUDA extension, skips the import attempt entirely)? That makes things 100% predictable.
 
