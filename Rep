@@ -1,37 +1,78 @@
-Got it 👍
-Since you’re running inside Jupyter/IPython (no sudo, Python-only fallback), here are the clean instructions:
+You're nearly there — Python can't find the repository src package. That just means the process running test_video.py doesn't have the repo root on PYTHONPATH.
+
+Below are short, copy-pasteable fixes. Pick the environment you want to use (Notebook or Terminal).
 
 
 ---
 
-Step 1 – Move to repo root
+Notebook (Jupyter) — recommended (3 cells)
 
-cd /home/work/dcvc/DCVC_fresh
+Cell A — ensure cwd and PYTHONPATH
 
-
----
-
-Step 2 – Make sure Python sees the repo
-
-In your notebook, first cell:
-
-import sys, os
-# Add repo root so "src" can be imported
+# Cell A: run this first (paste & execute)
+import os, sys
 repo_root = "/home/work/dcvc/DCVC_fresh"
+os.chdir(repo_root)
 if repo_root not in sys.path:
     sys.path.insert(0, repo_root)
 os.environ["PYTHONPATH"] = repo_root
+print("cwd:", os.getcwd())
+print("PYTHONPATH:", os.environ["PYTHONPATH"])
+print("src exists:", os.path.isdir(os.path.join(repo_root, "src")))
+print("src/layers exists:", os.path.isdir(os.path.join(repo_root, "src", "layers")))
 
-print("PYTHONPATH set ->", os.environ["PYTHONPATH"])
+Cell B — quick import test
+
+# Cell B: confirms python can import the module that failed
+import importlib, traceback
+try:
+    importlib.invalidate_caches()
+    m = importlib.import_module("src.layers.cuda_inference")
+    print("Import OK:", m)
+except Exception:
+    traceback.print_exc()
+
+If this prints an ImportError/ModuleNotFoundError, paste the traceback here.
+
+If it prints some other error (e.g. missing compiled .so inside src.layers), that means src.layers does exist — and the loader will fall back to Python backend automatically.
+
+
+Cell C — run test_video.py (with env for subprocess)
+
+# Cell C: run test_video.py from notebook so subprocess sees PYTHONPATH
+import subprocess, os, sys
+env = os.environ.copy()
+env["PYTHONPATH"] = os.getcwd()
+cmd = [
+    sys.executable, "test_video.py",
+    "--model_path_i", "./checkpoints/cvpr2025_image.pth.tar",
+    "--model_path_p", "./checkpoints/cvpr2025_video.pth.tar",
+    "--rate_num", "4",
+    "--test_config", "./dataset_config_example_yuv420.json",
+    "--cuda", "1",
+    "-w", "1",
+    "--write_stream", "1",
+    "--save_decoded_frame", "1",
+    "--force_zero_thres", "0.12",
+    "--output_path", "output.json",
+    "--force_intra_period", "-1",
+    "--reset_interval", "64",
+    "--force_frame_num", "-1",
+    "--check_existing", "0",
+    "--verbose", "1",
+]
+print("Running:", " ".join(cmd))
+proc = subprocess.run(cmd, cwd=os.getcwd(), env=env)
+print("Return code:", proc.returncode)
 
 
 ---
 
-Step 3 – Run test_video with your arguments
+Terminal / SSH — if you prefer shell
 
-In a new cell:
-
-!python test_video.py \
+cd /home/work/dcvc/DCVC_fresh
+export PYTHONPATH="$(pwd)"          # make src importable
+python test_video.py \
   --model_path_i ./checkpoints/cvpr2025_image.pth.tar \
   --model_path_p ./checkpoints/cvpr2025_video.pth.tar \
   --rate_num 4 \
@@ -51,17 +92,49 @@ In a new cell:
 
 ---
 
-✅ With this setup:
+If you still get ModuleNotFoundError: No module named 'src.layers'
 
-If compiled C++/CUDA modules are missing → the loader falls back to Python backend (mlcodec_rans_py.py).
+1. Confirm src/layers exists:
 
-You should see Backend in use: py in the logs.
 
-No sudo or distutils needed.
+
+ls -la /home/work/dcvc/DCVC_fresh/src/layers
+
+2. If the directory is missing, you cloned into the wrong folder or truncated the repo. Re-clone or copy the src directory from the repo root.
+
+
+3. If src/layers exists but the import fails, run the notebook Cell B import test and paste the traceback here — that will tell me if cuda_inference tries to import a compiled extension and fails, or if Python truly can't find the folder.
+
 
 
 
 ---
 
-Do you want me to also give you a “force Python-only” switch (so it never even tries the C++/CUDA extension, skips the import attempt entirely)? That makes things 100% predictable.
+Force Python-only backend (optional, makes behavior deterministic)
+
+If you'd like to ensure the run never attempts to import compiled C++/CUDA modules at all, set an env var before running and I’ll show you how to make the loader respect it. Quick temporary approach: edit the top of src/python/codec_loader.py to immediately force the Python fallback:
+
+Open src/python/codec_loader.py and change the try/except to:
+
+# near top of file: force Python backend (temporary)
+USE_PY_FALLBACK = True
+
+if not USE_PY_FALLBACK:
+    try:
+        import importlib
+        ML = importlib.import_module("MLCodec_extensions_cpp")
+        ...
+    except Exception:
+        ...
+else:
+    # import the Python fallback implementation
+    from .mlcodec_rans_py import RansEncoderLib, RansDecoderLib, pmf_to_quantized_cdf as _pmf
+    ...
+
+If you want, I can produce a one-line patch cell that applies this change for you.
+
+
+---
+
+Run the Notebook steps (A → B → C) or the Terminal commands, and paste any new tracebacks/output you get. I’ll follow up immediately with the precise next fix.
 
