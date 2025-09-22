@@ -1,48 +1,49 @@
-# Create a shim module named MLCodec_extensions_cpp that wraps our Python fallback,
-# then re-run the same test command (subprocess) so worker processes can import it.
+# Create top-level shim MLCodec_extensions_cpp.py and re-run test_video.py
 from pathlib import Path
-import os, sys, importlib, subprocess, textwrap
+import os, sys, importlib, subprocess, traceback
 
 repo_root = Path("/home/work/dcvc/DCVC_fresh").resolve()
 os.chdir(repo_root)
-sys.path.insert(0, str(repo_root))
-os.environ["PYTHONPATH"] = str(repo_root)
 
-shim_path = repo_root / "src" / "MLCodec_extensions_cpp.py"
+# Top-level shim path (module must be importable as 'MLCodec_extensions_cpp')
+top_shim = repo_root / "MLCodec_extensions_cpp.py"
 shim_code = r'''
-# Auto-generated shim to satisfy `import MLCodec_extensions_cpp`
-# Delegates to src.python.codec_loader Python fallback when C++ extension missing.
+# Top-level shim to satisfy `import MLCodec_extensions_cpp`
+# Delegates to src.python.codec_loader Python fallback when compiled extension missing.
 
 try:
-    # Prefer compiled extension if present
+    # If a compiled extension named MLCodec_extensions_cpp exists on sys.path this
+    # will import it; otherwise the except clause will run and we re-export the
+    # pure-Python fallback from src.python.codec_loader.
     import importlib
-    ML = importlib.import_module("MLCodec_extensions_cpp")
-    # If we imported the compiled extension, we don't need this shim. But because
-    # this shim file itself is named MLCodec_extensions_cpp, this block won't run.
+    _real = importlib.import_module("MLCodec_extensions_cpp")
+    # If this succeeded, re-export names from the real module:
+    RansEncoder = _real.RansEncoder
+    RansDecoder = _real.RansDecoder
+    pmf_to_quantized_cdf = getattr(_real, "pmf_to_quantized_cdf", None)
 except Exception:
-    # Import our fallback implementation
-    from src.python.codec_loader import RansEncoder as _RansEncoder, RansDecoder as _RansDecoder, pmf_to_quantized_cdf as _pmf
-    # Re-export the API expected by the code that imports MLCodec_extensions_cpp
-    RansEncoder = _RansEncoder
-    RansDecoder = _RansDecoder
-    pmf_to_quantized_cdf = _pmf
+    # Fallback: import the python implementation and re-export symbols
+    from src.python.codec_loader import RansEncoder as RansEncoder, RansDecoder as RansDecoder, pmf_to_quantized_cdf as pmf_to_quantized_cdf
 '''
 
-# Write shim file (overwrite if exists)
-shim_path.write_text(shim_code)
-print("Wrote shim:", shim_path)
+top_shim.write_text(shim_code)
+print("Wrote top-level shim:", top_shim)
 
-# Confirm file exists and is importable
-import importlib, traceback
+# Ensure repo root is on PYTHONPATH for subprocesses
+env = os.environ.copy()
+env["PYTHONPATH"] = str(repo_root)
+print("PYTHONPATH for subprocess:", env["PYTHONPATH"])
+
+# quick import test in this process
 try:
     importlib.invalidate_caches()
     mod = importlib.import_module("MLCodec_extensions_cpp")
-    print("Imported shim module OK:", mod)
-    print("Attributes:", [a for a in ("RansEncoder","RansDecoder","pmf_to_quantized_cdf") if hasattr(mod,a)])
+    print("Imported top-level shim OK:", mod)
+    print("Has RansEncoder:", hasattr(mod, "RansEncoder"), "Has RansDecoder:", hasattr(mod, "RansDecoder"))
 except Exception:
     traceback.print_exc()
 
-# Now run test_video.py (same command you used before). This will launch worker processes that import MLCodec_extensions_cpp.
+# Now run test_video.py (same args as before)
 cmd = [
     sys.executable, "test_video.py",
     "--model_path_i", "./checkpoints/cvpr2025_image.pth.tar",
@@ -63,8 +64,6 @@ cmd = [
 ]
 
 print("Running test_video.py (this may take a while)...")
-env = os.environ.copy()
-env["PYTHONPATH"] = str(repo_root)
 proc = subprocess.run(cmd, cwd=str(repo_root), env=env)
 print("Return code:", proc.returncode)
 
@@ -74,36 +73,53 @@ print("Return code:", proc.returncode)
 
 
 
-Wrote shim: /home/work/dcvc/DCVC_fresh/src/MLCodec_extensions_cpp.py
+
+
+
+
+
+
+
+
+Wrote top-level shim: /home/work/dcvc/DCVC_fresh/MLCodec_extensions_cpp.py
+PYTHONPATH for subprocess: /home/work/dcvc/DCVC_fresh
+Imported top-level shim OK: <module 'MLCodec_extensions_cpp' from '/home/work/dcvc/DCVC_fresh/MLCodec_extensions_cpp.py'>
+Has RansEncoder: True Has RansDecoder: True
 Running test_video.py (this may take a while)...
-Traceback (most recent call last):
-  File "/tmp/ipykernel_1552/3947874010.py", line 39, in <module>
-    mod = importlib.import_module("MLCodec_extensions_cpp")
-          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/work/dcvc/miniconda3/envs/dcvc_rt_env/lib/python3.12/importlib/__init__.py", line 90, in import_module
-    return _bootstrap._gcd_import(name[level:], package, level)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "<frozen importlib._bootstrap>", line 1387, in _gcd_import
-  File "<frozen importlib._bootstrap>", line 1360, in _find_and_load
-  File "<frozen importlib._bootstrap>", line 1324, in _find_and_load_unlocked
-ModuleNotFoundError: No module named 'MLCodec_extensions_cpp'
 cannot import cuda implementation for inference, fallback to pytorch.
 testing 4 rates, using qp: 0, 21, 42, 63, 
   0%|          | 0/212 [00:00<?, ?it/s]
 cannot import cuda implementation for inference, fallback to pytorch.
-Exception in initializer:
+created folder: out_bin/UVG
+created folder: out_bin/MCL-JCV
+created folder: out_bin/HEVC_B
+created folder: out_bin/HEVC_E
+created folder: out_bin/HEVC_C
+created folder: out_bin/HEVC_D
+  0%|          | 0/212 [00:08<?, ?it/s]
+concurrent.futures.process._RemoteTraceback: 
+"""
 Traceback (most recent call last):
-  File "/home/work/dcvc/miniconda3/envs/dcvc_rt_env/lib/python3.12/concurrent/futures/process.py", line 243, in _process_worker
-    initializer(*initargs)
-  File "/home/work/dcvc/DCVC_fresh/test_video.py", line 403, in init_func
-    i_frame_net.update(args.force_zero_thres)
-  File "/home/work/dcvc/DCVC_fresh/src/models/common_model.py", line 50, in update
-    self.entropy_coder = EntropyCoder()
-                         ^^^^^^^^^^^^^^
-  File "/home/work/dcvc/DCVC_fresh/src/models/entropy_models.py", line 15, in __init__
-    from MLCodec_extensions_cpp import RansEncoder, RansDecoder
-ModuleNotFoundError: No module named 'MLCodec_extensions_cpp'
-  0%|          | 0/212 [00:04<?, ?it/s]
+  File "/home/work/dcvc/miniconda3/envs/dcvc_rt_env/lib/python3.12/concurrent/futures/process.py", line 264, in _process_worker
+    r = call_item.fn(*call_item.args, **call_item.kwargs)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/work/dcvc/DCVC_fresh/test_video.py", line 370, in worker
+    result = run_one_point_with_stream(p_frame_net, i_frame_net, args)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/work/dcvc/DCVC_fresh/test_video.py", line 147, in run_one_point_with_stream
+    src_reader = get_src_reader(args)
+                 ^^^^^^^^^^^^^^^^^^^^
+  File "/home/work/dcvc/DCVC_fresh/test_video.py", line 70, in get_src_reader
+    src_reader = YUV420Reader(args['src_path'], args['src_width'], args['src_height'])
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/work/dcvc/DCVC_fresh/src/utils/video_reader.py", line 64, in __init__
+    self.file = open(src_path, "rb")
+                ^^^^^^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: '/media/data/UVG/Beauty_1920x1080_120fps_420_8bit_YUV.yuv'
+"""
+
+The above exception was the direct cause of the following exception:
+
 Traceback (most recent call last):
   File "/home/work/dcvc/DCVC_fresh/test_video.py", line 541, in <module>
     main()
@@ -115,5 +131,5 @@ Traceback (most recent call last):
            ^^^^^^^^^^^^^^^^^^^
   File "/home/work/dcvc/miniconda3/envs/dcvc_rt_env/lib/python3.12/concurrent/futures/_base.py", line 401, in __get_result
     raise self._exception
-concurrent.futures.process.BrokenProcessPool: A process in the process pool was terminated abruptly while the future was running or pending.
+FileNotFoundError: [Errno 2] No such file or directory: '/media/data/UVG/Beauty_1920x1080_120fps_420_8bit_YUV.yuv'
 Return code: 1
