@@ -1,66 +1,26 @@
-You're almost there — the file was updated on disk but your notebook still had the old modules loaded in memory, so the running classes still used the previous (bad) flush. We can fix that without restarting the kernel by forcing Python to unload the old modules and re-import the updated files.
+Got it 👍 — let’s slow down and go step by step.
+Right now, the problem is: inside the pure-Python fallback, the flush() function assumes each CDF entry is a tuple (start, range), but in reality the data structure is nested one level deeper. That’s why you’re getting:
 
-Run these three short cells (one at a time) in your notebook from the repo root /home/work/dcvc/DCVC_fresh.
+TypeError: int() argument must be ... not 'tuple'
 
-
----
-
-Cell 1 — quick check: show the new flush in the file (sanity)
-This ensures the file on disk contains the corrected flush implementation.
-
-# Cell 1 — inspect the file to confirm new flush() exists
-from pathlib import Path
-p = Path("src/python/mlcodec_rans_py.py")
-assert p.exists(), "File src/python/mlcodec_rans_py.py not found"
-txt = p.read_text()
-print("Showing lines 1..220 of src/python/mlcodec_rans_py.py\n")
-for i, line in enumerate(txt.splitlines(), start=1):
-    if i > 220:
-        break
-    print(f"{i:03d}: {line}")
-# quick scan for the flush signature
-print("\n---\nflush() present?", "def flush(self):" in txt)
-
-If you see the updated flush code in the printed lines (the block that uses entry = rans_sym_grp[cdf_idx] and start = int(entry[0])), proceed to Cell 2. If not, tell me and we'll re-write the file.
+Before we patch the code, we need to inspect the actual structure that’s being stored in enc._lib._ransSymbols.
 
 
 ---
 
-Cell 2 — forcibly unload old modules and re-import the loader
-This removes any previously imported copies and reloads fresh code from disk.
+✅ Step-by-step instructions (in your Jupyter notebook)
 
-# Cell 2 — unload stale modules and re-import loader
-import sys
-import importlib
+1. Make sure you are at the repo root
 
-mods_to_remove = [m for m in list(sys.modules.keys()) if m.startswith("src.python") or m in ("mlcodec_rans_py","codec_loader","MLCodec_extensions_cpp")]
-print("Modules to remove (preview):", mods_to_remove)
+cd /home/work/dcvc/DCVC_fresh
 
-for m in mods_to_remove:
-    sys.modules.pop(m, None)
+2. In a notebook cell, run this inspection code
 
-# Now import the loader fresh
-loader = importlib.import_module("src.python.codec_loader")
-importlib.reload(loader)  # ensure reloaded
-print("Imported loader; BACKEND =", getattr(loader, "BACKEND", None))
-# expose for the next cell
-globals()["loader"] = loader
+# Step 2 — Inspect internal RansEncoderLib state
+from src.python import codec_loader as loader
+import numpy as np, pprint
 
-You should see BACKEND = "py" printed (since compiled extension isn't installed). If you see an ImportError here, paste the traceback.
-
-
----
-
-Cell 3 — re-run the smoke test using the freshly imported loader
-This is the same smoke test as before but now will use the freshly loaded pure-Python code.
-
-# Cell 3 — smoke test with fresh loader
-import numpy as np
-loader = globals().get("loader")
-assert loader is not None, "loader not imported; run previous cell"
-
-print("Backend in use:", loader.BACKEND)
-
+# Minimal PMF → CDF setup
 pmf = [0.2, 0.5, 0.3]
 precision = 12
 cdf = loader.pmf_to_quantized_cdf(pmf, precision)
@@ -69,26 +29,55 @@ cdfs_arr = np.array([cdf], dtype=np.int32)
 cdfs_sizes = np.array([len(cdf)], dtype=np.int32)
 offsets = np.array([0], dtype=np.int32)
 
+# Create encoder and add cdf
 enc = loader.RansEncoder()
 idx = enc.add_cdf(cdfs_arr, cdfs_sizes, offsets)
-print("cdf index:", idx)
 
-symbols = np.array([ (0 & 0xff) | (1 << 8), (0 & 0xff) | (2 << 8) ], dtype=np.int16)
-enc.encode_y(symbols, idx)
-enc.flush()
-stream = enc.get_encoded_stream()
-print("Encoded stream len:", len(stream))
-print("Encoded bytes:", np.asarray(stream, dtype=np.uint8).tolist())
+print("Backend in use:", loader.BACKEND)
+print("Returned cdf idx:", idx)
 
-dec = loader.RansDecoder()
-dec.add_cdf(cdfs_arr, cdfs_sizes, offsets)
-dec.set_stream(stream)
-dec.decode_y(np.array([0,0], dtype=np.uint8), idx)
-out = dec.get_decoded_tensor()
-print("Decoded result:", out.tolist())
+# Inspect the internal Python fallback object
+lib = getattr(enc, "_lib", None)
+print("Internal _lib type:", type(lib))
+
+# If it's the Python fallback, check the stored symbols
+if lib is not None and hasattr(lib, "_ransSymbols"):
+    rs = lib._ransSymbols
+    print("Type of _ransSymbols:", type(rs))
+    print("Length of _ransSymbols:", len(rs))
+    if len(rs) > 0:
+        sample = rs[0]
+        print("First element type:", type(sample))
+        print("Sample length:", len(sample) if hasattr(sample, "__len__") else "N/A")
+        # Print first few entries to see nesting
+        for i, el in enumerate(sample[:5]):
+            print(f"  idx {i}: type={type(el)}, repr={repr(el)}")
 
 
 ---
 
-Run those three cells in order and paste the outputs (or any traceback) if anything fails. If it succeeds, we’ll have a working pure-Python fallback and can proceed to integrate it into DCVC or refine correctness/performance.
+📌 What this does:
+
+Builds a tiny CDF from [0.2, 0.5, 0.3].
+
+Adds it into the encoder (enc.add_cdf(...)).
+
+Then prints the first few entries of enc._lib._ransSymbols.
+
+
+
+---
+
+✅ What you need to do
+
+1. Run the cell above in your notebook.
+
+
+2. Copy & paste the output here.
+
+
+
+Once I see how the nesting looks, I will give you the exact patch for flush() (1–2 lines changed) so it stops treating a nested tuple like a flat pair.
+
+Would you like me to also prepare the ready-to-paste patch cell for mlcodec_rans_py.py so you can directly overwrite the buggy flush() once we see the structure?
 
