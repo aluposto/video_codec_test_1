@@ -202,3 +202,68 @@ env = os.environ.copy()
 env["PYTHONPATH"] = str(repo_root)
 proc = subprocess.run(cmd, cwd=str(repo_root), env=env)
 print("Return code:", proc.returncode)
+
+
+
+Patched shim written: /home/work/dcvc/DCVC_fresh/MLCodec_extensions_cpp.py
+Imported MLCodec_extensions_cpp shim OK: <module 'MLCodec_extensions_cpp' from '/home/work/dcvc/DCVC_fresh/MLCodec_extensions_cpp.py'>
+Running test_video.py (full run requested) ...
+cannot import cuda implementation for inference, fallback to pytorch.
+testing 4 rates, using qp: 0, 21, 42, 63, 
+  0%|          | 0/212 [00:00<?, ?it/s]
+cannot import cuda implementation for inference, fallback to pytorch.
+/pytorch/aten/src/ATen/native/cuda/ScatterGatherKernel.cu:163: operator(): block: [440,0,0], thread: [33,0,0] Assertion `idx_dim >= 0 && idx_dim < index_size && "scatter gather kernel index out of bounds"` failed.
+/pytorch/aten/src/ATen/native/cuda/ScatterGatherKernel.cu:163: operator(): block: [440,0,0], thread: [35,0,0] Assertion `idx_dim >= 0 && idx_dim < index_size && "scatter gather kernel index out of bounds"` failed.
+/pytorch/aten/src/ATen/native/cuda/ScatterGatherKernel.cu:163: operator(): block: [440,0,0], thread: [37,0,0] Assertion `idx_dim >= 0 && idx_dim < index_size && "scatter gather kernel index out of bounds"` failed.
+/pytorch/aten/src/ATen/native/cuda/ScatterGatherKernel.cu:163: operator(): block: [440,0,0], thread: [39,0,0] Assertion `idx_dim >= 0 && idx_dim < index_size && "scatter gather kernel index out of bounds"` failed.
+  0%|          | 0/212 [01:10<?, ?it/s]
+concurrent.futures.process._RemoteTraceback: 
+"""
+Traceback (most recent call last):
+  File "/home/work/dcvc/miniconda3/envs/dcvc_rt_env/lib/python3.12/concurrent/futures/process.py", line 264, in _process_worker
+    r = call_item.fn(*call_item.args, **call_item.kwargs)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/work/dcvc/DCVC_fresh/test_video.py", line 370, in worker
+    result = run_one_point_with_stream(p_frame_net, i_frame_net, args)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/work/dcvc/DCVC_fresh/test_video.py", line 279, in run_one_point_with_stream
+    decoded = i_frame_net.decompress(bit_stream, sps, qp)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/work/dcvc/DCVC_fresh/src/models/image_model.py", line 203, in decompress
+    y_hat = self.decompress_prior_4x(params, self.y_spatial_prior_reduction,
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/work/dcvc/DCVC_fresh/src/models/common_model.py", line 276, in decompress_prior_4x
+    y_q_r = self.gaussian_encoder.decode_and_get_y(scales_r, dtype, device)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/work/dcvc/DCVC_fresh/src/models/entropy_models.py", line 323, in decode_and_get_y
+    indexes, skip_cond = self.build_indexes_decoder(scales)
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/work/dcvc/DCVC_fresh/src/models/entropy_models.py", line 294, in build_indexes_decoder
+    indexes = indexes[skip_cond]
+              ~~~~~~~^^^^^^^^^^^
+torch.AcceleratorError: CUDA error: device-side assert triggered
+CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+"""
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/home/work/dcvc/DCVC_fresh/test_video.py", line 541, in <module>
+    main()
+  File "/home/work/dcvc/DCVC_fresh/test_video.py", line 514, in main
+    result = obj.result()
+             ^^^^^^^^^^^^
+  File "/home/work/dcvc/miniconda3/envs/dcvc_rt_env/lib/python3.12/concurrent/futures/_base.py", line 456, in result
+    return self.__get_result()
+           ^^^^^^^^^^^^^^^^^^^
+  File "/home/work/dcvc/miniconda3/envs/dcvc_rt_env/lib/python3.12/concurrent/futures/_base.py", line 401, in __get_result
+    raise self._exception
+torch.AcceleratorError: CUDA error: device-side assert triggered
+CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+Return code: 1
