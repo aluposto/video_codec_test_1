@@ -1,74 +1,16 @@
-# Try to compile MLCodec_extensions_cpp manually (no setup.py / distutils)
-import sys, subprocess, os
-from pathlib import Path
-import sysconfig
-import pybind11
+repo_root: /home/work/dcvc/dcvc_try_p
+py_rans_dir: /home/work/dcvc/dcvc_try_p/src/cpp/py_rans
+cpp_dir: /home/work/dcvc/dcvc_try_p/src/cpp
+Found source files: ['/home/work/dcvc/dcvc_try_p/src/cpp/py_rans/py_rans.cpp', '/home/work/dcvc/dcvc_try_p/src/cpp/py_rans/rans.cpp']
+Python include: /home/work/dcvc/miniconda3/envs/dcvc_rt_env_1/include/python3.12
+pybind11 include: /home/work/dcvc/miniconda3/envs/dcvc_rt_env_1/lib/python3.12/site-packages/pybind11/include
+extra include (py_rans dir): /home/work/dcvc/dcvc_try_p/src/cpp/py_rans
 
-repo_root = Path("/home/work/dcvc/dcvc_try_p").resolve()
-py_rans_dir = repo_root / "src" / "cpp" / "py_rans"
-cpp_dir = repo_root / "src" / "cpp"
-out_name = "MLCodec_extensions_cpp.so"
-out_path = cpp_dir / out_name
+Compile command:
+ g++ -O3 -std=c++14 -fPIC -shared -Wl,-O1 -Wl,--as-needed -I/home/work/dcvc/miniconda3/envs/dcvc_rt_env_1/include/python3.12 -I/home/work/dcvc/miniconda3/envs/dcvc_rt_env_1/lib/python3.12/site-packages/pybind11/include -I/home/work/dcvc/dcvc_try_p/src/cpp/py_rans /home/work/dcvc/dcvc_try_p/src/cpp/py_rans/py_rans.cpp /home/work/dcvc/dcvc_try_p/src/cpp/py_rans/rans.cpp -o /home/work/dcvc/dcvc_try_p/src/cpp/MLCodec_extensions_cpp.so 
 
-print("repo_root:", repo_root)
-print("py_rans_dir:", py_rans_dir)
-print("cpp_dir:", cpp_dir)
+Return code: 0
 
-# Source files we expect
-sources = []
-for fname in ["py_rans.cpp", "rans.cpp", "rans.cpp", "py_rans.cpp"]:
-    p = py_rans_dir / fname
-    if p.exists():
-        if str(p) not in sources:
-            sources.append(str(p))
-# Also include any other .cpp in py_rans_dir
-for p in py_rans_dir.glob("*.cpp"):
-    if str(p) not in sources:
-        sources.append(str(p))
-
-print("Found source files:", sources)
-
-# Get include paths
-py_inc = sysconfig.get_paths()["include"]
-pybind_inc = pybind11.get_include()
-extra_inc = str(py_rans_dir)
-
-print("Python include:", py_inc)
-print("pybind11 include:", pybind_inc)
-print("extra include (py_rans dir):", extra_inc)
-
-# Compiler & flags
-compiler = os.environ.get("CXX", "g++")
-cflags = "-O3 -std=c++14 -fPIC -shared -Wl,-O1 -Wl,--as-needed"
-include_flags = f"-I{py_inc} -I{pybind_inc} -I{extra_inc}"
-# Linker flags: none by default
-ldflags = ""
-
-cmd = f"{compiler} {cflags} {include_flags} {' '.join(sources)} -o {out_path} {ldflags}"
-print("\nCompile command:\n", cmd)
-
-# Run compile
-proc = subprocess.run(cmd, shell=True, cwd=str(cpp_dir), capture_output=True, text=True)
-print("\nReturn code:", proc.returncode)
-if proc.stdout:
-    print("\n--- COMPILER STDOUT ---\n", proc.stdout)
-if proc.stderr:
-    print("\n--- COMPILER STDERR ---\n", proc.stderr)
-
-# Show file if created
-if out_path.exists():
-    print("\nSUCCESS: created", out_path)
-    print("Attempting to import the built module...")
-    # ensure repo root on sys.path
-    if str(repo_root) not in sys.path:
-        sys.path.insert(0, str(repo_root))
-    try:
-        import importlib
-        m = importlib.import_module("MLCodec_extensions_cpp")
-        print("Imported MLCodec_extensions_cpp:", m)
-    except Exception as e:
-        print("Import failed:", repr(e))
-else:
-    print("\nBuild did not produce", out_name)
-    print("If errors indicate 'g++: not found' or 'Python.h: No such file or directory', you lack a compiler or Python dev headers in this environment.")
-    print("Paste the full STDERR above and I'll recommend the next step (conda install, admin request, or Colab).")
+SUCCESS: created /home/work/dcvc/dcvc_try_p/src/cpp/MLCodec_extensions_cpp.so
+Attempting to import the built module...
+Import failed: ModuleNotFoundError("No module named 'MLCodec_extensions_cpp'")
