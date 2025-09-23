@@ -1,33 +1,141 @@
-Good distinction ⚡ — running this cell:
+Great — now that conda is on PATH (nice!), run the three notebook cells below in order. They will:
 
-! /home/work/dcvc/miniconda3/bin/conda install -y -c conda-forge gcc_linux-64 gxx_linux-64 python-distutils-lite
-
-does not "bring conda into PATH" for your notebook.
-
-What it does is:
-
-Uses the absolute path to the conda executable (/home/work/dcvc/miniconda3/bin/conda).
-
-That binary then installs packages (gcc_linux-64, gxx_linux-64, python-distutils-lite) into your current environment (dcvc_rt_env_1).
-
-So you don’t need conda on PATH at all — you just call it directly by path.
+1. Install the compiler toolchain and distutils into your active conda env.
 
 
-After running it once, you don’t have to “bring conda” into the notebook: you can always use /home/work/dcvc/miniconda3/bin/conda when you need it.
+2. Build the RANS Python extension (MLCodec_extensions_cpp) in-place.
+
+
+3. Re-run test_video.py as a subprocess and stream its output.
+
+
+
+Paste each block into its own cell and run them.
 
 
 ---
 
-👉 So to answer directly:
-No, this won’t add conda to your PATH, but it will let you use conda from your notebook by calling it via full path. If you do want conda permanently in PATH inside your notebook, you could prepend it:
+Cell 1 — install compilers & distutils via conda
 
-import os
-os.environ["PATH"] = "/home/work/dcvc/miniconda3/bin:" + os.environ["PATH"]
+# Cell 1: install compiler toolchain + distutils into your active conda env
+# (uses conda on PATH which you just added)
+import subprocess, sys
 
-Then !conda --version will work just like in a normal shell.
+cmd = "conda install -y -c conda-forge gcc_linux-64 gxx_linux-64 python-distutils-lite pybind11 cython"
+print("Running:", cmd)
+proc = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+print("returncode:", proc.returncode)
+print("--- stdout (first 2000 chars) ---")
+print(proc.stdout[:2000])
+print("--- stderr (first 2000 chars) ---")
+print(proc.stderr[:2000])
+
+if proc.returncode != 0:
+    raise RuntimeError("Conda install failed. Paste the above stderr if you want help.")
+else:
+    print("Conda install finished successfully. Proceed to build step.")
 
 
 ---
 
-Would you like me to give you a combined notebook cell that (1) fixes PATH so conda is available, and (2) installs the missing compiler/distutils packages?
+Cell 2 — build the MLCodec_extensions_cpp extension
+
+# Cell 2: build MLCodec_extensions_cpp using src/cpp/setup.py
+import subprocess, sys
+from pathlib import Path
+
+repo_root = Path("/home/work/dcvc/dcvc_try_p").resolve()
+cpp_dir = repo_root / "src" / "cpp"
+print("Building in:", cpp_dir)
+
+cmd = [sys.executable, "setup.py", "build_ext", "--inplace"]
+proc = subprocess.run(cmd, cwd=str(cpp_dir), capture_output=True, text=True)
+
+print("returncode:", proc.returncode)
+print("\n----- STDOUT -----\n")
+print(proc.stdout)
+print("\n----- STDERR -----\n")
+print(proc.stderr)
+
+print("\nFiles in src/cpp:")
+for p in sorted(cpp_dir.glob("*")):
+    print(" ", p.name)
+
+# List shared object candidates in the repo
+so_candidates = list(repo_root.glob("**/*.so")) + list(repo_root.glob("**/*.pyd"))
+print(f"\nFound {len(so_candidates)} .so/.pyd candidates (showing up to 30):")
+for s in so_candidates[:30]:
+    print(" ", s)
+
+If this build succeeds proc.returncode will be 0 and you'll see one or more .so files (or .cpython-*.so) listed. If it fails, copy the full STDERR printed above and paste it here so I can parse it and tell you exactly what to fix.
+
+
+---
+
+Cell 3 — test import & re-run test_video.py
+
+# Cell 3: test import of compiled module, then run test_video.py as a subprocess (streams output)
+import importlib.util, importlib, sys, os
+from pathlib import Path
+repo_root = Path("/home/work/dcvc/dcvc_try_p").resolve()
+
+# ensure repo root on sys.path for import resolution
+if str(repo_root) not in sys.path:
+    sys.path.insert(0, str(repo_root))
+
+print("repo_root on sys.path:", repo_root)
+spec = importlib.util.find_spec("MLCodec_extensions_cpp")
+print("find_spec MLCodec_extensions_cpp:", spec)
+if spec is None:
+    print("Compiled extension not importable. If build failed, paste the stderr from Cell 2 here.")
+else:
+    try:
+        m = importlib.import_module("MLCodec_extensions_cpp")
+        print("Imported MLCodec_extensions_cpp:", m)
+    except Exception as e:
+        print("Import raised:", repr(e))
+
+# If import looks OK, re-run the test script in a subprocess
+if importlib.util.find_spec("MLCodec_extensions_cpp") is not None:
+    env = os.environ.copy()
+    env["PYTHONPATH"] = str(repo_root) + (":" + env.get("PYTHONPATH", "")) if env.get("PYTHONPATH") else str(repo_root)
+    cmd = [
+        sys.executable, str(repo_root / "test_video.py"),
+        "--model_path_i", "./checkpoints/cvpr2025_image.pth.tar",
+        "--model_path_p", "./checkpoints/cvpr2025_video.pth.tar",
+        "--rate_num", "4",
+        "--test_config", "./dataset_config_example_yuv420.json",
+        "--cuda", "1",
+        "-w", "1",
+        "--write_stream", "1",
+        "--force_zero_thres", "0.12",
+        "--output_path", "output.json",
+        "--force_intra_period", "-1",
+        "--reset_interval", "64",
+        "--force_frame_num", "-1",
+        "--check_existing", "0",
+        "--verbose", "0",
+    ]
+    print("Re-running test_video.py as subprocess...")
+    proc = subprocess.Popen(cmd, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
+    try:
+        for line in proc.stdout:
+            print(line, end="")
+    except KeyboardInterrupt:
+        proc.terminate()
+        proc.wait()
+        print("\nSubprocess terminated by user.")
+    finally:
+        proc.stdout.close()
+        rc = proc.wait()
+        print(f"\nSubprocess finished with return code: {rc}")
+else:
+    print("Skipping re-run; extension not importable.")
+
+
+---
+
+If anything errors during these steps, paste the full output from the failing cell (especially the complete STDERR from Cell 2). I’ll read it and give the exact fix.
+
+Want me to also include the optional CUDA inference extension build cell (to get rid of the “fallback to pytorch” message)? I can add it after the RANS build if you want.
 
