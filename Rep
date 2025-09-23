@@ -1,7 +1,331 @@
-!PYTHONPATH=$(pwd) python test_video.py --model_path_i ./checkpoints/cvpr2025_image.pth.tar --model_path_p ./checkpoints/cvpr2025_video.pth.tar --rate_num 4 --test_config ./dataset_config_example_yuv420.json --cuda 1 -w 1 --write_stream 1 --force_zero_thres 0.12 --output_path output.json --force_intra_period -1 --reset_interval 64 --force_frame_num -1 --check_existing 0 --verbose 0
+ls -R
 
+.:
+ CODE_OF_CONDUCT.md   SECURITY.md                          requirements.txt
+ CONTRIBUTING.md      assets/                              src/
+ DCVC-family/         azure-pipelines.yml                  test_conditions.md
+ LICENSE.txt          checkpoints/                         test_video.py
+'NOTICE .txt'         dataset_config_example_yuv420.json
+ README.md            media/
 
-Traceback (most recent call last):
-  File "/home/work/dcvc/dcvc_try_p/test_video.py", line 16, in <module>
-    from src.layers.cuda_inference import replicate_pad
-ModuleNotFoundError: No module named 'src.layers'
+./DCVC-family:
+DCVC/  DCVC-DC/  DCVC-FM/  DCVC-HEM/  DCVC-TCM/  EVC/  README.md
+
+./DCVC-family/DCVC:
+README.md     dataset_config_example.json  test_video.py
+assets/       requirements.txt             write_stream_readme.md
+checkpoints/  src/
+
+./DCVC-family/DCVC/assets:
+rd_curve_psnr.png
+
+./DCVC-family/DCVC/checkpoints:
+download_compressai_models.py
+
+./DCVC-family/DCVC/src:
+cpp/  entropy_models/  layers/  models/  ops/  utils/  zoo/
+
+./DCVC-family/DCVC/src/cpp:
+3rdparty/  CMakeLists.txt  ops/  rans/
+
+./DCVC-family/DCVC/src/cpp/3rdparty:
+CMakeLists.txt  pybind11/  ryg_rans/
+
+./DCVC-family/DCVC/src/cpp/3rdparty/pybind11:
+CMakeLists.txt  CMakeLists.txt.in
+
+./DCVC-family/DCVC/src/cpp/3rdparty/ryg_rans:
+CMakeLists.txt  CMakeLists.txt.in
+
+./DCVC-family/DCVC/src/cpp/ops:
+CMakeLists.txt  ops.cpp
+
+./DCVC-family/DCVC/src/cpp/rans:
+CMakeLists.txt  rans_interface.cpp  rans_interface.hpp
+
+./DCVC-family/DCVC/src/entropy_models:
+entropy_models.py  video_entropy_models.py
+
+./DCVC-family/DCVC/src/layers:
+gdn.py  layers.py
+
+./DCVC-family/DCVC/src/models:
+DCVC_net.py  priors.py  utils.py  video_net.py  waseda.py
+
+./DCVC-family/DCVC/src/ops:
+bound_ops.py  parametrizers.py
+
+./DCVC-family/DCVC/src/utils:
+stream_helper.py
+
+./DCVC-family/DCVC/src/zoo:
+image.py
+
+./DCVC-family/DCVC-DC:
+README.md     dataset_config_example_rgb.json     src/
+assets/       dataset_config_example_yuv420.json  test_data_to_png.py
+checkpoints/  requirements.txt                    test_video.py
+
+./DCVC-family/DCVC-DC/assets:
+bitsaving.png  rd_rgb_psnr.png  rd_yuv420_psnr.png
+
+./DCVC-family/DCVC-DC/checkpoints:
+download.py
+
+./DCVC-family/DCVC-DC/src:
+cpp/  models/  transforms/  utils/
+
+./DCVC-family/DCVC-DC/src/cpp:
+3rdparty/  CMakeLists.txt  ops/  py_rans/  rans/
+
+./DCVC-family/DCVC-DC/src/cpp/3rdparty:
+CMakeLists.txt  pybind11/  ryg_rans/
+
+./DCVC-family/DCVC-DC/src/cpp/3rdparty/pybind11:
+CMakeLists.txt  CMakeLists.txt.in
+
+./DCVC-family/DCVC-DC/src/cpp/3rdparty/ryg_rans:
+CMakeLists.txt  CMakeLists.txt.in
+
+./DCVC-family/DCVC-DC/src/cpp/ops:
+CMakeLists.txt  ops.cpp
+
+./DCVC-family/DCVC-DC/src/cpp/py_rans:
+CMakeLists.txt  py_rans.cpp  py_rans.h
+
+./DCVC-family/DCVC-DC/src/cpp/rans:
+CMakeLists.txt  rans.cpp  rans.h
+
+./DCVC-family/DCVC-DC/src/models:
+common_model.py    image_model.py  video_model.py
+entropy_models.py  layers.py       video_net.py
+
+./DCVC-family/DCVC-DC/src/transforms:
+functional.py
+
+./DCVC-family/DCVC-DC/src/utils:
+common.py  metrics.py  stream_helper.py  video_reader.py  video_writer.py
+
+./DCVC-family/DCVC-FM:
+README.md     dataset_config_example_rgb.json     src/
+assets/       dataset_config_example_yuv420.json  test_data_to_png.py
+checkpoints/  requirements.txt                    test_video.py
+
+./DCVC-family/DCVC-FM/assets:
+bitsaving.png  rd_yuv420_psnr.png
+
+./DCVC-family/DCVC-FM/checkpoints:
+download.py
+
+./DCVC-family/DCVC-FM/src:
+cpp/  models/  transforms/  utils/
+
+./DCVC-family/DCVC-FM/src/cpp:
+3rdparty/  CMakeLists.txt  ops/  py_rans/  rans/
+
+./DCVC-family/DCVC-FM/src/cpp/3rdparty:
+CMakeLists.txt  pybind11/
+
+./DCVC-family/DCVC-FM/src/cpp/3rdparty/pybind11:
+CMakeLists.txt  CMakeLists.txt.in
+
+./DCVC-family/DCVC-FM/src/cpp/ops:
+CMakeLists.txt  ops.cpp
+
+./DCVC-family/DCVC-FM/src/cpp/py_rans:
+CMakeLists.txt  py_rans.cpp  py_rans.h
+
+./DCVC-family/DCVC-FM/src/cpp/rans:
+CMakeLists.txt  rans.cpp  rans.h  rans_byte.h
+
+./DCVC-family/DCVC-FM/src/models:
+block_mc.py      entropy_models.py  image_model.py  video_model.py
+common_model.py  extensions/        layers.py       video_net.py
+
+./DCVC-family/DCVC-FM/src/models/extensions:
+block_mc.cpp  block_mc.h  block_mc_kernel.cu  common.h  setup.py
+
+./DCVC-family/DCVC-FM/src/transforms:
+functional.py  transforms.py
+
+./DCVC-family/DCVC-FM/src/utils:
+common.py   stream_helper.py  video_reader.py
+metrics.py  test_helper.py    video_writer.py
+
+./DCVC-family/DCVC-HEM:
+README.md  checkpoints/                 requirements.txt  test_video.py
+assets/    dataset_config_example.json  src/
+
+./DCVC-family/DCVC-HEM/assets:
+rd_curve_psnr.png
+
+./DCVC-family/DCVC-HEM/checkpoints:
+download.py
+
+./DCVC-family/DCVC-HEM/src:
+cpp/  entropy_models/  layers/  models/  utils/
+
+./DCVC-family/DCVC-HEM/src/cpp:
+3rdparty/  CMakeLists.txt  ops/  rans/
+
+./DCVC-family/DCVC-HEM/src/cpp/3rdparty:
+CMakeLists.txt  pybind11/  ryg_rans/
+
+./DCVC-family/DCVC-HEM/src/cpp/3rdparty/pybind11:
+CMakeLists.txt  CMakeLists.txt.in
+
+./DCVC-family/DCVC-HEM/src/cpp/3rdparty/ryg_rans:
+CMakeLists.txt  CMakeLists.txt.in
+
+./DCVC-family/DCVC-HEM/src/cpp/ops:
+CMakeLists.txt  ops.cpp
+
+./DCVC-family/DCVC-HEM/src/cpp/rans:
+CMakeLists.txt  rans_interface.cpp  rans_interface.hpp
+
+./DCVC-family/DCVC-HEM/src/entropy_models:
+entropy_models.py
+
+./DCVC-family/DCVC-HEM/src/layers:
+layers.py
+
+./DCVC-family/DCVC-HEM/src/models:
+common_model.py  image_model.py  video_model.py  video_net.py
+
+./DCVC-family/DCVC-HEM/src/utils:
+common.py  png_reader.py  stream_helper.py
+
+./DCVC-family/DCVC-TCM:
+README.md                                requirements.txt
+checkpoints/                             src/
+recommended_test_full_results_IP12.json  test_video.py
+recommended_test_full_results_IP32.json
+
+./DCVC-family/DCVC-TCM/checkpoints:
+
+./DCVC-family/DCVC-TCM/src:
+cpp/  entropy_models/  layers/  models/  ops/  utils/
+
+./DCVC-family/DCVC-TCM/src/cpp:
+3rdparty/  CMakeLists.txt  ops/  rans/
+
+./DCVC-family/DCVC-TCM/src/cpp/3rdparty:
+CMakeLists.txt  pybind11/  ryg_rans/
+
+./DCVC-family/DCVC-TCM/src/cpp/3rdparty/pybind11:
+CMakeLists.txt  CMakeLists.txt.in
+
+./DCVC-family/DCVC-TCM/src/cpp/3rdparty/ryg_rans:
+CMakeLists.txt  CMakeLists.txt.in
+
+./DCVC-family/DCVC-TCM/src/cpp/ops:
+CMakeLists.txt  ops.cpp
+
+./DCVC-family/DCVC-TCM/src/cpp/rans:
+CMakeLists.txt  rans_interface.cpp  rans_interface.hpp
+
+./DCVC-family/DCVC-TCM/src/entropy_models:
+entropy_models.py  video_entropy_models.py
+
+./DCVC-family/DCVC-TCM/src/layers:
+gdn.py  layers.py
+
+./DCVC-family/DCVC-TCM/src/models:
+priors.py  utils.py  video_net.py  video_net_dmc.py
+
+./DCVC-family/DCVC-TCM/src/ops:
+bound_ops.py  parametrizers.py
+
+./DCVC-family/DCVC-TCM/src/utils:
+stream_helper.py
+
+./DCVC-family/EVC:
+README.md     model_complexity.py  run_test_image.py  test_image.py
+assets/       requirements.txt     src/
+checkpoints/  results/             test_cfg/
+
+./DCVC-family/EVC/assets:
+RD.png  dualprior.png  enc_dec.png  framework.png  hyperprior.png
+
+./DCVC-family/EVC/checkpoints:
+download.py
+
+./DCVC-family/EVC/results:
+RD_numbers.py
+
+./DCVC-family/EVC/src:
+cpp/  models/  utils/
+
+./DCVC-family/EVC/src/cpp:
+3rdparty/  CMakeLists.txt  ops/  py_rans/  rans/
+
+./DCVC-family/EVC/src/cpp/3rdparty:
+CMakeLists.txt  pybind11/  ryg_rans/
+
+./DCVC-family/EVC/src/cpp/3rdparty/pybind11:
+CMakeLists.txt  CMakeLists.txt.in
+
+./DCVC-family/EVC/src/cpp/3rdparty/ryg_rans:
+CMakeLists.txt  CMakeLists.txt.in
+
+./DCVC-family/EVC/src/cpp/ops:
+CMakeLists.txt  ops.cpp
+
+./DCVC-family/EVC/src/cpp/py_rans:
+CMakeLists.txt  py_rans.cpp  py_rans.h
+
+./DCVC-family/EVC/src/cpp/rans:
+CMakeLists.txt  rans.cpp  rans.h
+
+./DCVC-family/EVC/src/models:
+__init__.py      entropy_models.py  image_model.py  scalable_encoder_model.py
+common_model.py  hyperprior.py      layers.py
+
+./DCVC-family/EVC/src/utils:
+common.py  png_reader.py  stream_helper.py
+
+./DCVC-family/EVC/test_cfg:
+local_kodak.json
+
+./assets:
+RD-Curve.png                complexity.png             test_pipeline.png
+RGB_different_settings.png  intra_compare.png
+bd_rate_speed.png           practical_performance.png
+
+./checkpoints:
+cvpr2025_image.pth.tar  cvpr2025_video.pth.tar
+
+./media:
+data/
+
+./media/data:
+UVG/
+
+./media/data/UVG:
+Beauty_1920x1080_120fps_420_8bit_YUV.yuv
+
+./src:
+cpp/  layers/  models/  utils/
+
+./src/cpp:
+py_rans/  setup.py
+
+./src/cpp/py_rans:
+py_rans.cpp  py_rans.h  rans.cpp  rans.h  rans_byte.h
+
+./src/layers:
+cuda_inference.py  extensions/  layers.py
+
+./src/layers/extensions:
+inference/
+
+./src/layers/extensions/inference:
+bind.cpp  common.h  def.h  impl.cpp  kernel.cu  setup.py
+
+./src/models:
+common_model.py  entropy_models.py  image_model.py  video_model.py
+
+./src/utils:
+common.py   stream_helper.py  video_reader.py
+metrics.py  transforms.py     video_writer.py
+​
