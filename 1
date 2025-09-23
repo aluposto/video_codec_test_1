@@ -1,78 +1,51 @@
-# Force use of conda env libstdc++ at runtime, retry import, and re-run test script
-import os, sys, subprocess, importlib
-from pathlib import Path
+LD_LIBRARY_PATH now starts with: /home/work/dcvc/miniconda3/envs/dcvc_rt_env_1/lib
+sys.path[0:4]: ['/home/work/dcvc/dcvc_try_p/src/cpp', '/home/work/dcvc/dcvc_try_p', '', '/home/work/.local/lib/python3.10/site-packages']
 
-repo_root = Path("/home/work/dcvc/dcvc_try_p").resolve()
-cpp_dir = repo_root / "src" / "cpp"
-so_path = cpp_dir / "MLCodec_extensions_cpp.so"
+Attempting to import MLCodec_extensions_cpp...
+Import failed: ImportError("/home/work/dcvc/miniconda3/envs/dcvc_rt_env_1/bin/../lib/libstdc++.so.6: version `GLIBCXX_3.4.30' not found (required by /home/work/dcvc/dcvc_try_p/src/cpp/MLCodec_extensions_cpp.so)")
 
-# 1) Prepend conda env lib dir to LD_LIBRARY_PATH for this process and subprocesses
-conda_env_lib = "/home/work/dcvc/miniconda3/envs/dcvc_rt_env_1/lib"
-old_ld = os.environ.get("LD_LIBRARY_PATH", "")
-if conda_env_lib not in old_ld.split(":"):
-    os.environ["LD_LIBRARY_PATH"] = conda_env_lib + (":" + old_ld if old_ld else "")
-print("LD_LIBRARY_PATH now starts with:", os.environ["LD_LIBRARY_PATH"].split(":")[0])
+--- ldd for the built .so ---
+/home/work/dcvc/dcvc_try_p/src/cpp/MLCodec_extensions_cpp.so: /home/work/dcvc/miniconda3/envs/dcvc_rt_env_1/lib/libstdc++.so.6: version `GLIBCXX_3.4.30' not found (required by /home/work/dcvc/dcvc_try_p/src/cpp/MLCodec_extensions_cpp.so)
+	linux-vdso.so.1 (0x00007ffc0e3b6000)
+	/opt/kernel/libbaihook.so (0x00007f44f250a000)
+	/opt/kernel/libnvmlhook.ubuntu18.04.x86_64.so (0x00007f44f2000000)
+	/opt/kernel/libcudahook.ubuntu18.04.x86_64.so (0x00007f44f1a00000)
+	libstdc++.so.6 => /home/work/dcvc/miniconda3/envs/dcvc_rt_env_1/lib/libstdc++.so.6 (0x00007f44f17ec000)
+	libm.so.6 => /usr/lib/x86_64-linux-gnu/libm.so.6 (0x00007f44f1f19000)
+	libgcc_s.so.1 => /home/work/dcvc/miniconda3/envs/dcvc_rt_env_1/lib/libgcc_s.so.1 (0x00007f44f24d4000)
+	libc.so.6 => /usr/lib/x86_64-linux-gnu/libc.so.6 (0x00007f44f15c4000)
+	/lib64/ld-linux-x86-64.so.2 (0x00007f44f2591000)
+	libdl.so.2 => /usr/lib/x86_64-linux-gnu/libdl.so.2 (0x00007f44f24cf000)
 
-# 2) Ensure cpp_dir is on sys.path for imports
-if str(cpp_dir) not in sys.path:
-    sys.path.insert(0, str(cpp_dir))
-print("sys.path[0:4]:", sys.path[:4])
+/bin/bash: /home/work/dcvc/miniconda3/envs/dcvc_rt_env_1/lib/libtinfo.so.6: no version information available (required by /bin/bash)
 
-# 3) Try import
-print("\nAttempting to import MLCodec_extensions_cpp...")
-try:
-    m = importlib.import_module("MLCodec_extensions_cpp")
-    print("Imported MLCodec_extensions_cpp:", m)
-except Exception as e:
-    print("Import failed:", repr(e))
-    # show ldd diagnostics to understand which lib is picked
-    if so_path.exists():
-        print("\n--- ldd for the built .so ---")
-        proc = subprocess.run(f"ldd {so_path}", shell=True, capture_output=True, text=True)
-        print(proc.stdout)
-        print(proc.stderr)
-    raise
+---------------------------------------------------------------------------
+ImportError                               Traceback (most recent call last)
+Cell In[36], line 24
+     22 print("\nAttempting to import MLCodec_extensions_cpp...")
+     23 try:
+---> 24     m = importlib.import_module("MLCodec_extensions_cpp")
+     25     print("Imported MLCodec_extensions_cpp:", m)
+     26 except Exception as e:
 
-# 4) If import succeeded, show ldd to verify libstdc++ now points to conda env lib
-print("\nImport succeeded. Verifying linked libraries (ldd):")
-proc = subprocess.run(f"ldd {so_path}", shell=True, capture_output=True, text=True)
-print(proc.stdout)
+File ~/dcvc/miniconda3/envs/dcvc_rt_env_1/lib/python3.12/importlib/__init__.py:90, in import_module(name, package)
+     88             break
+     89         level += 1
+---> 90 return _bootstrap._gcd_import(name[level:], package, level)
 
-# 5) Re-run test_video.py as subprocess with LD_LIBRARY_PATH preserved
-print("\nRe-running test_video.py with updated LD_LIBRARY_PATH (streams output)...")
-env = os.environ.copy()
-env["PYTHONPATH"] = str(repo_root) + ":" + env.get("PYTHONPATH", "")
-# ensure subprocess uses same LD_LIBRARY_PATH
-env["LD_LIBRARY_PATH"] = os.environ["LD_LIBRARY_PATH"]
+File <frozen importlib._bootstrap>:1387, in _gcd_import(name, package, level)
 
-cmd_list = [
-    sys.executable, str(repo_root / "test_video.py"),
-    "--model_path_i", "./checkpoints/cvpr2025_image.pth.tar",
-    "--model_path_p", "./checkpoints/cvpr2025_video.pth.tar",
-    "--rate_num", "4",
-    "--test_config", "./dataset_config_example_yuv420.json",
-    "--cuda", "1",
-    "-w", "1",
-    "--write_stream", "1",
-    "--force_zero_thres", "0.12",
-    "--output_path", "output.json",
-    "--force_intra_period", "-1",
-    "--reset_interval", "64",
-    "--force_frame_num", "-1",
-    "--check_existing", "0",
-    "--verbose", "0",
-]
+File <frozen importlib._bootstrap>:1360, in _find_and_load(name, import_)
 
-print("Running:", " ".join(cmd_list))
-proc = subprocess.Popen(cmd_list, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
-try:
-    for line in proc.stdout:
-        print(line, end="")
-except KeyboardInterrupt:
-    proc.terminate()
-    proc.wait()
-    print("\nSubprocess terminated by user.")
-finally:
-    proc.stdout.close()
-    rc = proc.wait()
-    print(f"\nSubprocess finished with return code: {rc}")
+File <frozen importlib._bootstrap>:1331, in _find_and_load_unlocked(name, import_)
+
+File <frozen importlib._bootstrap>:921, in _load_unlocked(spec)
+
+File <frozen importlib._bootstrap>:813, in module_from_spec(spec)
+
+File <frozen importlib._bootstrap_external>:1293, in create_module(self, spec)
+
+File <frozen importlib._bootstrap>:488, in _call_with_frames_removed(f, *args, **kwds)
+
+ImportError: /home/work/dcvc/miniconda3/envs/dcvc_rt_env_1/bin/../lib/libstdc++.so.6: version `GLIBCXX_3.4.30' not found (required by /home/work/dcvc/dcvc_try_p/src/cpp/MLCodec_extensions_cpp.so)
+​
