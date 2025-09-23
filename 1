@@ -1,56 +1,45 @@
-Got it ✅ — if you’re running inside a Jupyter notebook, you just need to manually add the repo root (/home/work/dcvc/dcvc_try_p) to sys.path before importing. That way import src.layers.cuda_inference works.
-
-Put this in the first cell of your notebook:
-
-import sys
+# Cell 1: build the py_rans / MLCodec_extensions_cpp extension
+import subprocess, sys, os
 from pathlib import Path
 
-# point this to your repo root (the one that has src/ and test_video.py)
 repo_root = Path("/home/work/dcvc/dcvc_try_p").resolve()
+py_rans_dir = repo_root / "src" / "cpp" / "py_rans"
 
-if str(repo_root) not in sys.path:
-    sys.path.insert(0, str(repo_root))
+print("py_rans dir:", py_rans_dir)
+if not py_rans_dir.exists():
+    raise FileNotFoundError(f"{py_rans_dir} not found. Adjust repo_root if needed.")
 
-print("Repo root added to sys.path:", repo_root)
+# Ensure some build tools are available: try to call python setup.py build_ext --inplace
+cmd = [sys.executable, "setup.py", "build_ext", "--inplace"]
+print("Running:", " ".join(cmd), "in", str(py_rans_dir))
+proc = subprocess.run(cmd, cwd=str(py_rans_dir), capture_output=True, text=True)
 
-# Quick test
-import importlib
-print("src spec:", importlib.util.find_spec("src"))
-print("src.layers spec:", importlib.util.find_spec("src.layers"))
+print("returncode:", proc.returncode)
+print("----- stdout -----")
+print(proc.stdout[:4000])
+print("----- stderr -----")
+print(proc.stderr[:8000])
 
-Then you can import normally in later cells:
-
-from src.layers.cuda_inference import replicate_pad
-from src.models.video_model import DMC
-
-Or, if you want to call the same script (test_video.py) with arguments inside the notebook, do this:
-
-import runpy
-import sys
-
-# Simulate command line args
-sys.argv = [
-    "test_video.py",
-    "--model_path_i", "./checkpoints/cvpr2025_image.pth.tar",
-    "--model_path_p", "./checkpoints/cvpr2025_video.pth.tar",
-    "--rate_num", "4",
-    "--test_config", "./dataset_config_example_yuv420.json",
-    "--cuda", "1",
-    "-w", "1",
-    "--write_stream", "1",
-    "--force_zero_thres", "0.12",
-    "--output_path", "output.json",
-    "--force_intra_period", "-1",
-    "--reset_interval", "64",
-    "--force_frame_num", "-1",
-    "--check_existing", "0",
-    "--verbose", "0",
-]
-
-runpy.run_path("test_video.py")
+if proc.returncode != 0:
+    print("\nBuild failed. Common causes: missing C/C++ compiler, missing python dev headers, or incompatible Python version.")
+    print("If build failed, paste the stderr here and I'll help debug.")
+else:
+    print("\npy_rans built. Check for a generated .so file in the directory. You should now be able to 'import MLCodec_extensions_cpp' from Python.")
 
 
----
 
-👉 Question: Do you want to call functions directly inside Jupyter (import classes and run them), or do you prefer to run the script test_video.py unchanged inside the notebook?
 
+
+
+
+py_rans dir: /home/work/dcvc/dcvc_try_p/src/cpp/py_rans
+Running: /home/work/dcvc/miniconda3/envs/dcvc_rt_env_1/bin/python setup.py build_ext --inplace in /home/work/dcvc/dcvc_try_p/src/cpp/py_rans
+returncode: 2
+----- stdout -----
+
+----- stderr -----
+/home/work/dcvc/miniconda3/envs/dcvc_rt_env_1/bin/python: can't open file '/home/work/dcvc/dcvc_try_p/src/cpp/py_rans/setup.py': [Errno 2] No such file or directory
+
+
+Build failed. Common causes: missing C/C++ compiler, missing python dev headers, or incompatible Python version.
+If build failed, paste the stderr here and I'll help debug.
