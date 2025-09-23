@@ -1,169 +1,60 @@
-The error is clear: the subprocess failed because the native RANS Python extension MLCodec_extensions_cpp (the repo’s py_rans / entropy coder bindings) is not built, so the worker process aborts on import and the process pool breaks.
+# Cell 1: install compiler toolchain + distutils into your active conda env
+# (uses conda on PATH which you just added)
+import subprocess, sys
 
-Two things to do (in order):
-
-1. Build the RANS/Python extension (py_rans) so MLCodec_extensions_cpp becomes importable.
-
-
-2. (Optional but recommended) Build the CUDA inference extension so you stop seeing the “fallback to pytorch” message.
-
-
-
-Below are three ready-to-run notebook cells you can paste and run (one after another). They:
-
-build the py_rans extension in-place,
-
-build the CPU/CUDA inference extension (if you have CUDA / nvcc; if not, it will likely fail but you can still use the PyTorch fallback), and
-
-re-run test_video.py as a subprocess (same command you used).
-
-
-If any build fails, paste the stderr here and I’ll interpret it.
-
-
----
-
-Cell 1 — Build the RANS Python extension (MLCodec_extensions_cpp)
-
-# Cell 1: build the py_rans / MLCodec_extensions_cpp extension
-import subprocess, sys, os
-from pathlib import Path
-
-repo_root = Path("/home/work/dcvc/dcvc_try_p").resolve()
-py_rans_dir = repo_root / "src" / "cpp" / "py_rans"
-
-print("py_rans dir:", py_rans_dir)
-if not py_rans_dir.exists():
-    raise FileNotFoundError(f"{py_rans_dir} not found. Adjust repo_root if needed.")
-
-# Ensure some build tools are available: try to call python setup.py build_ext --inplace
-cmd = [sys.executable, "setup.py", "build_ext", "--inplace"]
-print("Running:", " ".join(cmd), "in", str(py_rans_dir))
-proc = subprocess.run(cmd, cwd=str(py_rans_dir), capture_output=True, text=True)
-
+cmd = "conda install -y -c conda-forge gcc_linux-64 gxx_linux-64 python-distutils-lite pybind11 cython"
+print("Running:", cmd)
+proc = subprocess.run(cmd, shell=True, capture_output=True, text=True)
 print("returncode:", proc.returncode)
-print("----- stdout -----")
-print(proc.stdout[:4000])
-print("----- stderr -----")
-print(proc.stderr[:8000])
+print("--- stdout (first 2000 chars) ---")
+print(proc.stdout[:2000])
+print("--- stderr (first 2000 chars) ---")
+print(proc.stderr[:2000])
 
 if proc.returncode != 0:
-    print("\nBuild failed. Common causes: missing C/C++ compiler, missing python dev headers, or incompatible Python version.")
-    print("If build failed, paste the stderr here and I'll help debug.")
+    raise RuntimeError("Conda install failed. Paste the above stderr if you want help.")
 else:
-    print("\npy_rans built. Check for a generated .so file in the directory. You should now be able to 'import MLCodec_extensions_cpp' from Python.")
-
-Notes:
-
-The directory contains py_rans.cpp, rans.cpp, etc. The setup script should compile it into a shared object like MLCodec_extensions_cpp.*.so.
-
-If you see errors about pybind11 missing, install it: pip install pybind11.
-
-If you see compiler errors about gcc/g++ missing, install build-essential (or equivalent) in your environment/container.
+    print("Conda install finished successfully. Proceed to build step.")
 
 
+Running: conda install -y -c conda-forge gcc_linux-64 gxx_linux-64 python-distutils-lite pybind11 cython
+returncode: 1
+--- stdout (first 2000 chars) ---
+Channels:
+ - conda-forge
+ - defaults
+Platform: linux-64
+Collecting package metadata (repodata.json): ...working... done
+Solving environment: ...working... failed
 
----
+--- stderr (first 2000 chars) ---
 
-Cell 2 — Build CUDA inference extension (optional)
+PackagesNotFoundError: The following packages are not available from current channels:
 
-# Cell 2: build inference extension (optional — requires CUDA toolchain)
-import subprocess, sys, os
-from pathlib import Path
+  - python-distutils-lite
 
-repo_root = Path("/home/work/dcvc/dcvc_try_p").resolve()
-inf_dir = repo_root / "src" / "layers" / "extensions" / "inference"
+Current channels:
 
-print("inference ext dir:", inf_dir)
-if not inf_dir.exists():
-    print("Inference extension directory not found; skipping build.")
-else:
-    cmd = [sys.executable, "setup.py", "build_ext", "--inplace"]
-    print("Running:", " ".join(cmd), "in", str(inf_dir))
-    proc = subprocess.run(cmd, cwd=str(inf_dir), capture_output=True, text=True)
-    print("returncode:", proc.returncode)
-    print("----- stdout -----")
-    print(proc.stdout[:4000])
-    print("----- stderr -----")
-    print(proc.stderr[:8000])
-    if proc.returncode == 0:
-        print("\nInference extension built. Re-run test to pick up native CUDA implementation.")
-    else:
-        print("\nInference build failed — you can continue using the PyTorch fallback (it's slower). Paste stderr if you want help.")
+  - https://conda.anaconda.org/conda-forge
+  - https://repo.anaconda.com/pkgs/main
+  - https://repo.anaconda.com/pkgs/r
 
-Notes:
+To search for alternate channels that may provide the conda package you're
+looking for, navigate to
 
-This requires nvcc & CUDA headers. If you don’t have CUDA dev installed, skip this cell and rely on the fallback.
+    https://anaconda.org
+
+and use the search bar at the top of the page.
 
 
 
----
+---------------------------------------------------------------------------
+RuntimeError                              Traceback (most recent call last)
+Cell In[32], line 15
+     12 print(proc.stderr[:2000])
+     14 if proc.returncode != 0:
+---> 15     raise RuntimeError("Conda install failed. Paste the above stderr if you want help.")
+     16 else:
+     17     print("Conda install finished successfully. Proceed to build step.")
 
-Cell 3 — Re-run test_video.py as subprocess (same args)
-
-# Cell 3: run test_video.py (subprocess) — same command as before
-import subprocess, sys, os
-from pathlib import Path
-
-repo_root = Path("/home/work/dcvc/dcvc_try_p").resolve()
-env = os.environ.copy()
-env["PYTHONPATH"] = str(repo_root) + (":" + env.get("PYTHONPATH", "")) if env.get("PYTHONPATH") else str(repo_root)
-
-cmd = [
-    sys.executable, str(repo_root / "test_video.py"),
-    "--model_path_i", "./checkpoints/cvpr2025_image.pth.tar",
-    "--model_path_p", "./checkpoints/cvpr2025_video.pth.tar",
-    "--rate_num", "4",
-    "--test_config", "./dataset_config_example_yuv420.json",
-    "--cuda", "1",
-    "-w", "1",
-    "--write_stream", "1",
-    "--force_zero_thres", "0.12",
-    "--output_path", "output.json",
-    "--force_intra_period", "-1",
-    "--reset_interval", "64",
-    "--force_frame_num", "-1",
-    "--check_existing", "0",
-    "--verbose", "0",
-]
-
-print("Running:", " ".join(cmd))
-proc = subprocess.Popen(cmd, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
-
-try:
-    for line in proc.stdout:
-        print(line, end="")
-except KeyboardInterrupt:
-    proc.terminate()
-    proc.wait()
-    print("\nSubprocess terminated by user.")
-finally:
-    proc.stdout.close()
-    rc = proc.wait()
-    print(f"\nSubprocess finished with return code: {rc}")
-
-
----
-
-If you run Cell 1 and it fails, paste the full stderr from Cell 1 here. The most common fixes:
-
-Missing pybind11 → pip install pybind11.
-
-Missing compiler → install build-essential / gcc / g++.
-
-Python ABI / version mismatch: e.g., extension built for different Python minor version. Verify sys.executable is the same Python you later use to run the script.
-
-If setup.py fails to find rans sources, check that the rans C files are present under src/cpp/py_rans or the sibling rans folder and that relative paths are correct (they usually are in this repo).
-
-
-If both builds succeed and you still get ModuleNotFoundError: No module named 'MLCodec_extensions_cpp', run this quick check in a cell and paste the output:
-
-import sys, importlib
-print("python:", sys.executable)
-print("sys.path[0:5]:", sys.path[:5])
-print("find_spec MLCodec_extensions_cpp:", importlib.util.find_spec("MLCodec_extensions_cpp"))
-
-That will show whether Python can see the compiled module.
-
-Want me to generate a one-liner to try installing pybind11 automatically and then building? I can, but I prefer to see your build logs first so I don’t guess the wrong fix.
-
+RuntimeError: Conda install failed. Paste the above stderr if you want help.
