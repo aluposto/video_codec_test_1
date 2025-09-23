@@ -1,51 +1,103 @@
-LD_LIBRARY_PATH now starts with: /home/work/dcvc/miniconda3/envs/dcvc_rt_env_1/lib
-sys.path[0:4]: ['/home/work/dcvc/dcvc_try_p/src/cpp', '/home/work/dcvc/dcvc_try_p', '', '/home/work/.local/lib/python3.10/site-packages']
+# Rebuild the .so using the conda-provided compiler and embed conda lib dir into rpath
+import os, sys, subprocess
+from pathlib import Path
+import importlib
 
-Attempting to import MLCodec_extensions_cpp...
-Import failed: ImportError("/home/work/dcvc/miniconda3/envs/dcvc_rt_env_1/bin/../lib/libstdc++.so.6: version `GLIBCXX_3.4.30' not found (required by /home/work/dcvc/dcvc_try_p/src/cpp/MLCodec_extensions_cpp.so)")
+repo_root = Path("/home/work/dcvc/dcvc_try_p").resolve()
+py_rans_dir = repo_root / "src" / "cpp" / "py_rans"
+cpp_dir = repo_root / "src" / "cpp"
+out_so = cpp_dir / "MLCodec_extensions_cpp.so"
+conda_env = Path("/home/work/dcvc/miniconda3/envs/dcvc_rt_env_1").resolve()
+conda_bin = conda_env / "bin"
+conda_lib = str((conda_env / "lib").resolve())
 
---- ldd for the built .so ---
-/home/work/dcvc/dcvc_try_p/src/cpp/MLCodec_extensions_cpp.so: /home/work/dcvc/miniconda3/envs/dcvc_rt_env_1/lib/libstdc++.so.6: version `GLIBCXX_3.4.30' not found (required by /home/work/dcvc/dcvc_try_p/src/cpp/MLCodec_extensions_cpp.so)
-	linux-vdso.so.1 (0x00007ffc0e3b6000)
-	/opt/kernel/libbaihook.so (0x00007f44f250a000)
-	/opt/kernel/libnvmlhook.ubuntu18.04.x86_64.so (0x00007f44f2000000)
-	/opt/kernel/libcudahook.ubuntu18.04.x86_64.so (0x00007f44f1a00000)
-	libstdc++.so.6 => /home/work/dcvc/miniconda3/envs/dcvc_rt_env_1/lib/libstdc++.so.6 (0x00007f44f17ec000)
-	libm.so.6 => /usr/lib/x86_64-linux-gnu/libm.so.6 (0x00007f44f1f19000)
-	libgcc_s.so.1 => /home/work/dcvc/miniconda3/envs/dcvc_rt_env_1/lib/libgcc_s.so.1 (0x00007f44f24d4000)
-	libc.so.6 => /usr/lib/x86_64-linux-gnu/libc.so.6 (0x00007f44f15c4000)
-	/lib64/ld-linux-x86-64.so.2 (0x00007f44f2591000)
-	libdl.so.2 => /usr/lib/x86_64-linux-gnu/libdl.so.2 (0x00007f44f24cf000)
+print("repo_root:", repo_root)
+print("py_rans_dir:", py_rans_dir)
+print("cpp_dir:", cpp_dir)
+print("conda bin:", conda_bin)
+print("conda lib:", conda_lib)
 
-/bin/bash: /home/work/dcvc/miniconda3/envs/dcvc_rt_env_1/lib/libtinfo.so.6: no version information available (required by /bin/bash)
+# Find conda compiler candidates
+candidates = [
+    conda_bin / "x86_64-conda-linux-gnu-g++",
+    conda_bin / "x86_64-conda-linux-gnu-cc",
+    conda_bin / "g++",
+    conda_bin / "c++"
+] + [Path(p) for p in os.environ.get("PATH", "").split(":")]
 
----------------------------------------------------------------------------
-ImportError                               Traceback (most recent call last)
-Cell In[36], line 24
-     22 print("\nAttempting to import MLCodec_extensions_cpp...")
-     23 try:
----> 24     m = importlib.import_module("MLCodec_extensions_cpp")
-     25     print("Imported MLCodec_extensions_cpp:", m)
-     26 except Exception as e:
+compiler = None
+for c in candidates:
+    if isinstance(c, Path):
+        p = c
+    else:
+        p = Path(c)
+    if p.exists() and p.is_file() and os.access(str(p), os.X_OK):
+        name = p.name
+        # prefer conda-named cross-compiler if present
+        if "x86_64-conda" in name or str(conda_bin) in str(p):
+            compiler = str(p)
+            break
+        # fallback to any g++
+        if p.name in ("g++", "c++"):
+            compiler = str(p)
+            # don't break yet — prefer conda compiler if found later
+            # but keep this as fallback
+            fallback = compiler
 
-File ~/dcvc/miniconda3/envs/dcvc_rt_env_1/lib/python3.12/importlib/__init__.py:90, in import_module(name, package)
-     88             break
-     89         level += 1
----> 90 return _bootstrap._gcd_import(name[level:], package, level)
+# if no conda-named candidate found but a g++ in env exists, use it
+if compiler is None:
+    # try to find g++ in conda bin explicitly
+    gxx = conda_bin / "g++"
+    if gxx.exists():
+        compiler = str(gxx)
+    else:
+        # fallback to system g++
+        compiler = "g++"
+print("Using compiler:", compiler)
 
-File <frozen importlib._bootstrap>:1387, in _gcd_import(name, package, level)
+# Gather sources
+sources = sorted([str(p) for p in py_rans_dir.glob("*.cpp")])
+print("Sources:", sources)
+if not sources:
+    raise RuntimeError("No .cpp sources found in py_rans_dir")
 
-File <frozen importlib._bootstrap>:1360, in _find_and_load(name, import_)
+# includes
+import sysconfig, pybind11
+py_inc = sysconfig.get_paths()["include"]
+pybind_inc = pybind11.get_include()
+extra_inc = str(py_rans_dir)
 
-File <frozen importlib._bootstrap>:1331, in _find_and_load_unlocked(name, import_)
+# compile flags and rpath to conda lib
+cflags = "-O3 -std=c++14 -fPIC -shared -Wl,-O1 -Wl,--as-needed"
+include_flags = f"-I{py_inc} -I{pybind_inc} -I{extra_inc}"
+rpath_flag = f"-Wl,-rpath,{conda_lib}"
+cmd = f"{compiler} {cflags} {include_flags} {' '.join(sources)} -o {out_so} {rpath_flag}"
+print("\nCompile command:\n", cmd)
 
-File <frozen importlib._bootstrap>:921, in _load_unlocked(spec)
+proc = subprocess.run(cmd, shell=True, cwd=str(cpp_dir), capture_output=True, text=True)
+print("returncode:", proc.returncode)
+if proc.stdout:
+    print("\n--- stdout ---\n", proc.stdout)
+if proc.stderr:
+    print("\n--- stderr ---\n", proc.stderr)
 
-File <frozen importlib._bootstrap>:813, in module_from_spec(spec)
-
-File <frozen importlib._bootstrap_external>:1293, in create_module(self, spec)
-
-File <frozen importlib._bootstrap>:488, in _call_with_frames_removed(f, *args, **kwds)
-
-ImportError: /home/work/dcvc/miniconda3/envs/dcvc_rt_env_1/bin/../lib/libstdc++.so.6: version `GLIBCXX_3.4.30' not found (required by /home/work/dcvc/dcvc_try_p/src/cpp/MLCodec_extensions_cpp.so)
-​
+if out_so.exists():
+    print("\nBuilt:", out_so)
+    # ensure cpp_dir on sys.path
+    if str(cpp_dir) not in sys.path:
+        sys.path.insert(0, str(cpp_dir))
+    # ensure LD_LIBRARY_PATH includes conda lib (for subprocesses)
+    os.environ["LD_LIBRARY_PATH"] = conda_lib + (":" + os.environ.get("LD_LIBRARY_PATH", "")) if os.environ.get("LD_LIBRARY_PATH") else conda_lib
+    print("LD_LIBRARY_PATH set to start with conda lib:", os.environ["LD_LIBRARY_PATH"].split(":")[0])
+    try:
+        m = importlib.import_module("MLCodec_extensions_cpp")
+        print("Imported MLCodec_extensions_cpp:", m)
+    except Exception as e:
+        print("Import failed after rebuild:", repr(e))
+        # show ldd
+        print("\nldd output for built .so:")
+        ldd = subprocess.run(f"ldd {out_so}", shell=True, capture_output=True, text=True)
+        print(ldd.stdout)
+        print(ldd.stderr)
+else:
+    raise RuntimeError("Build did not produce output .so — see stderr above")
