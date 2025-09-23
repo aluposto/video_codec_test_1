@@ -1,20 +1,77 @@
-import sys
+# Install newer C++ runtime into current conda env, retry import, then re-run test_video.py
+import subprocess, sys, os
 from pathlib import Path
+repo_root = Path("/home/work/dcvc/dcvc_try_p").resolve()
+cpp_dir = repo_root / "src" / "cpp"
 
-cpp_dir = str(Path("/home/work/dcvc/dcvc_try_p/src/cpp").resolve())
-if cpp_dir not in sys.path:
-    sys.path.insert(0, cpp_dir)
-print("Inserted into sys.path:", cpp_dir)
+# 1) Install runtime libs via conda (non-root)
+cmd = "conda install -y -c conda-forge libstdcxx-ng libgcc-ng || true"
+print("Running:", cmd)
+proc = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+print("conda returncode:", proc.returncode)
+print("--- conda stdout (first 2000 chars) ---")
+print(proc.stdout[:2000])
+print("--- conda stderr (first 2000 chars) ---")
+print(proc.stderr[:2000])
 
-# Try import
-import importlib
+# 2) Try importing the built extension (ensure cpp_dir is on sys.path)
+import sys, importlib
+cpp_dir_str = str(cpp_dir.resolve())
+if cpp_dir_str not in sys.path:
+    sys.path.insert(0, cpp_dir_str)
+print("sys.path[0:4]:", sys.path[:4])
+
+print("\nTrying to import MLCodec_extensions_cpp...")
 try:
     m = importlib.import_module("MLCodec_extensions_cpp")
-    print("Imported MLCodec_extensions_cpp:", m)
+    print("Imported MLCodec_extensions_cpp ->", m)
 except Exception as e:
-    print("Import failed:", repr(e))
+    print("Import still failed:", repr(e))
+    # Show which libstdc++ would be loaded by the process (diagnostic)
+    print("\nDiagnostic: show libstdc++ used by python process (ldd on module if present)")
+    so_path = cpp_dir / "MLCodec_extensions_cpp.so"
+    if so_path.exists():
+        ldd_proc = subprocess.run(f"ldd {so_path}", shell=True, capture_output=True, text=True)
+        print("--- ldd output ---")
+        print(ldd_proc.stdout)
+        print(ldd_proc.stderr)
+    else:
+        print("Compiled .so not found at", so_path)
+    raise SystemExit("Import failed; see output above. Paste the import error + ldd output if you want further help.")
 
-
-    Inserted into sys.path: /home/work/dcvc/dcvc_try_p/src/cpp
-Import failed: ImportError("/home/work/dcvc/miniconda3/envs/dcvc_rt_env_1/bin/../lib/libstdc++.so.6: version `GLIBCXX_3.4.30' not found (required by /home/work/dcvc/dcvc_try_p/src/cpp/MLCodec_extensions_cpp.so)")
-​
+# 3) If import succeeded, re-run test_video.py as a subprocess
+if importlib.util.find_spec("MLCodec_extensions_cpp") is not None:
+    print("\nMLCodec_extensions_cpp importable — re-running test_video.py (subprocess).")
+    env = os.environ.copy()
+    # ensure repo root on PYTHONPATH for the subprocess
+    env["PYTHONPATH"] = str(repo_root) + ":" + env.get("PYTHONPATH", "")
+    cmd_list = [
+        sys.executable, str(repo_root / "test_video.py"),
+        "--model_path_i", "./checkpoints/cvpr2025_image.pth.tar",
+        "--model_path_p", "./checkpoints/cvpr2025_video.pth.tar",
+        "--rate_num", "4",
+        "--test_config", "./dataset_config_example_yuv420.json",
+        "--cuda", "1",
+        "-w", "1",
+        "--write_stream", "1",
+        "--force_zero_thres", "0.12",
+        "--output_path", "output.json",
+        "--force_intra_period", "-1",
+        "--reset_interval", "64",
+        "--force_frame_num", "-1",
+        "--check_existing", "0",
+        "--verbose", "0",
+    ]
+    print("Running:", " ".join(cmd_list))
+    proc = subprocess.Popen(cmd_list, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
+    try:
+        for line in proc.stdout:
+            print(line, end="")
+    except KeyboardInterrupt:
+        proc.terminate()
+        proc.wait()
+        print("\nSubprocess terminated by user.")
+    finally:
+        proc.stdout.close()
+        rc = proc.wait()
+        print(f"\nSubprocess finished with return code: {rc}")
