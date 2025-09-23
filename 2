@@ -1,66 +1,33 @@
-# Cell 1: try to install distutils + build toolchain and pybind11 (conda preferred)
-import os, subprocess, sys
-from pathlib import Path
+Good distinction ⚡ — running this cell:
 
-def run(cmd, cwd=None):
-    print(">>", cmd)
-    proc = subprocess.run(cmd, shell=True, cwd=cwd, capture_output=True, text=True)
-    print("returncode:", proc.returncode)
-    if proc.stdout:
-        print("stdout (first 2000):\n", proc.stdout[:2000])
-    if proc.stderr:
-        print("stderr (first 2000):\n", proc.stderr[:2000])
-    return proc
+! /home/work/dcvc/miniconda3/bin/conda install -y -c conda-forge gcc_linux-64 gxx_linux-64 python-distutils-lite
 
-# Detect conda
-conda_ok = False
-try:
-    proc = run("conda --version")
-    conda_ok = proc.returncode == 0
-except Exception as e:
-    print("conda check raised:", e)
+does not "bring conda into PATH" for your notebook.
 
-if conda_ok:
-    # install via conda-forge into current active env (non-root)
-    print("\nUsing conda to install build dependencies (non-root). This may take a few minutes.")
-    conda_cmd = (
-        "conda install -y -c conda-forge python-distutils-lite setuptools pybind11 wheel pip cython "
-        "gcc_linux-64 gxx_linux-64 || true"
-    )
-    run(conda_cmd)
-else:
-    # fallback: pip install Python-level build deps (won't provide compilers)
-    print("\nconda not found. Falling back to pip install (may still fail if no C compiler present).")
-    pip_cmd = f"{sys.executable} -m pip install --upgrade pip setuptools wheel pybind11 cython"
-    run(pip_cmd)
+What it does is:
 
-print("\nFinished dependency installation step. Proceed to build cell.")
+Uses the absolute path to the conda executable (/home/work/dcvc/miniconda3/bin/conda).
+
+That binary then installs packages (gcc_linux-64, gxx_linux-64, python-distutils-lite) into your current environment (dcvc_rt_env_1).
+
+So you don’t need conda on PATH at all — you just call it directly by path.
 
 
+After running it once, you don’t have to “bring conda” into the notebook: you can always use /home/work/dcvc/miniconda3/bin/conda when you need it.
 
 
->> conda --version
-returncode: 127
-stderr (first 2000):
- /bin/dash: 1: conda: not found
+---
+
+👉 So to answer directly:
+No, this won’t add conda to your PATH, but it will let you use conda from your notebook by calling it via full path. If you do want conda permanently in PATH inside your notebook, you could prepend it:
+
+import os
+os.environ["PATH"] = "/home/work/dcvc/miniconda3/bin:" + os.environ["PATH"]
+
+Then !conda --version will work just like in a normal shell.
 
 
-conda not found. Falling back to pip install (may still fail if no C compiler present).
->> /home/work/dcvc/miniconda3/envs/dcvc_rt_env_1/bin/python -m pip install --upgrade pip setuptools wheel pybind11 cython
-returncode: 0
-stdout (first 2000):
- Looking in indexes: https://pypi.org/simple, https://pypi.ngc.nvidia.com
-Requirement already satisfied: pip in /home/work/dcvc/miniconda3/envs/dcvc_rt_env_1/lib/python3.12/site-packages (25.2)
-Requirement already satisfied: setuptools in /home/work/dcvc/miniconda3/envs/dcvc_rt_env_1/lib/python3.12/site-packages (80.9.0)
-Requirement already satisfied: wheel in /home/work/dcvc/miniconda3/envs/dcvc_rt_env_1/lib/python3.12/site-packages (0.45.1)
-Requirement already satisfied: pybind11 in /home/work/dcvc/miniconda3/envs/dcvc_rt_env_1/lib/python3.12/site-packages (3.0.1)
-Collecting cython
-  Downloading cython-3.1.4-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl.metadata (5.0 kB)
-Downloading cython-3.1.4-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl (3.3 MB)
-   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 0.0/3.3 MB ? eta -:--:--
-   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 3.3/3.3 MB 21.7 MB/s  0:00:00
-Installing collected packages: cython
-Successfully installed cython-3.1.4
+---
 
+Would you like me to give you a combined notebook cell that (1) fixes PATH so conda is available, and (2) installs the missing compiler/distutils packages?
 
-Finished dependency installation step. Proceed to build cell.
