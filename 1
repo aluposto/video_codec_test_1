@@ -1,103 +1,30 @@
-# Rebuild the .so using the conda-provided compiler and embed conda lib dir into rpath
-import os, sys, subprocess
-from pathlib import Path
-import importlib
+repo_root: /home/work/dcvc/dcvc_try_p
+py_rans_dir: /home/work/dcvc/dcvc_try_p/src/cpp/py_rans
+cpp_dir: /home/work/dcvc/dcvc_try_p/src/cpp
+conda bin: /home/work/dcvc/miniconda3/envs/dcvc_rt_env_1/bin
+conda lib: /home/work/dcvc/miniconda3/envs/dcvc_rt_env_1/lib
+Using compiler: g++
+Sources: ['/home/work/dcvc/dcvc_try_p/src/cpp/py_rans/py_rans.cpp', '/home/work/dcvc/dcvc_try_p/src/cpp/py_rans/rans.cpp']
 
-repo_root = Path("/home/work/dcvc/dcvc_try_p").resolve()
-py_rans_dir = repo_root / "src" / "cpp" / "py_rans"
-cpp_dir = repo_root / "src" / "cpp"
-out_so = cpp_dir / "MLCodec_extensions_cpp.so"
-conda_env = Path("/home/work/dcvc/miniconda3/envs/dcvc_rt_env_1").resolve()
-conda_bin = conda_env / "bin"
-conda_lib = str((conda_env / "lib").resolve())
+Compile command:
+ g++ -O3 -std=c++14 -fPIC -shared -Wl,-O1 -Wl,--as-needed -I/home/work/dcvc/miniconda3/envs/dcvc_rt_env_1/include/python3.12 -I/home/work/dcvc/miniconda3/envs/dcvc_rt_env_1/lib/python3.12/site-packages/pybind11/include -I/home/work/dcvc/dcvc_try_p/src/cpp/py_rans /home/work/dcvc/dcvc_try_p/src/cpp/py_rans/py_rans.cpp /home/work/dcvc/dcvc_try_p/src/cpp/py_rans/rans.cpp -o /home/work/dcvc/dcvc_try_p/src/cpp/MLCodec_extensions_cpp.so -Wl,-rpath,/home/work/dcvc/miniconda3/envs/dcvc_rt_env_1/lib
+returncode: 0
 
-print("repo_root:", repo_root)
-print("py_rans_dir:", py_rans_dir)
-print("cpp_dir:", cpp_dir)
-print("conda bin:", conda_bin)
-print("conda lib:", conda_lib)
+Built: /home/work/dcvc/dcvc_try_p/src/cpp/MLCodec_extensions_cpp.so
+LD_LIBRARY_PATH set to start with conda lib: /home/work/dcvc/miniconda3/envs/dcvc_rt_env_1/lib
+Import failed after rebuild: ImportError("/home/work/dcvc/miniconda3/envs/dcvc_rt_env_1/bin/../lib/libstdc++.so.6: version `GLIBCXX_3.4.30' not found (required by /home/work/dcvc/dcvc_try_p/src/cpp/MLCodec_extensions_cpp.so)")
 
-# Find conda compiler candidates
-candidates = [
-    conda_bin / "x86_64-conda-linux-gnu-g++",
-    conda_bin / "x86_64-conda-linux-gnu-cc",
-    conda_bin / "g++",
-    conda_bin / "c++"
-] + [Path(p) for p in os.environ.get("PATH", "").split(":")]
+ldd output for built .so:
+/home/work/dcvc/dcvc_try_p/src/cpp/MLCodec_extensions_cpp.so: /home/work/dcvc/miniconda3/envs/dcvc_rt_env_1/lib/libstdc++.so.6: version `GLIBCXX_3.4.30' not found (required by /home/work/dcvc/dcvc_try_p/src/cpp/MLCodec_extensions_cpp.so)
+	linux-vdso.so.1 (0x00007ffc2dc62000)
+	/opt/kernel/libbaihook.so (0x00007fa7271d3000)
+	/opt/kernel/libnvmlhook.ubuntu18.04.x86_64.so (0x00007fa726c00000)
+	/opt/kernel/libcudahook.ubuntu18.04.x86_64.so (0x00007fa726600000)
+	libstdc++.so.6 => /home/work/dcvc/miniconda3/envs/dcvc_rt_env_1/lib/libstdc++.so.6 (0x00007fa7263ec000)
+	libm.so.6 => /usr/lib/x86_64-linux-gnu/libm.so.6 (0x00007fa7270d0000)
+	libgcc_s.so.1 => /home/work/dcvc/miniconda3/envs/dcvc_rt_env_1/lib/libgcc_s.so.1 (0x00007fa7270b6000)
+	libc.so.6 => /usr/lib/x86_64-linux-gnu/libc.so.6 (0x00007fa7261c4000)
+	/lib64/ld-linux-x86-64.so.2 (0x00007fa72725a000)
+	libdl.so.2 => /usr/lib/x86_64-linux-gnu/libdl.so.2 (0x00007fa7270b1000)
 
-compiler = None
-for c in candidates:
-    if isinstance(c, Path):
-        p = c
-    else:
-        p = Path(c)
-    if p.exists() and p.is_file() and os.access(str(p), os.X_OK):
-        name = p.name
-        # prefer conda-named cross-compiler if present
-        if "x86_64-conda" in name or str(conda_bin) in str(p):
-            compiler = str(p)
-            break
-        # fallback to any g++
-        if p.name in ("g++", "c++"):
-            compiler = str(p)
-            # don't break yet — prefer conda compiler if found later
-            # but keep this as fallback
-            fallback = compiler
-
-# if no conda-named candidate found but a g++ in env exists, use it
-if compiler is None:
-    # try to find g++ in conda bin explicitly
-    gxx = conda_bin / "g++"
-    if gxx.exists():
-        compiler = str(gxx)
-    else:
-        # fallback to system g++
-        compiler = "g++"
-print("Using compiler:", compiler)
-
-# Gather sources
-sources = sorted([str(p) for p in py_rans_dir.glob("*.cpp")])
-print("Sources:", sources)
-if not sources:
-    raise RuntimeError("No .cpp sources found in py_rans_dir")
-
-# includes
-import sysconfig, pybind11
-py_inc = sysconfig.get_paths()["include"]
-pybind_inc = pybind11.get_include()
-extra_inc = str(py_rans_dir)
-
-# compile flags and rpath to conda lib
-cflags = "-O3 -std=c++14 -fPIC -shared -Wl,-O1 -Wl,--as-needed"
-include_flags = f"-I{py_inc} -I{pybind_inc} -I{extra_inc}"
-rpath_flag = f"-Wl,-rpath,{conda_lib}"
-cmd = f"{compiler} {cflags} {include_flags} {' '.join(sources)} -o {out_so} {rpath_flag}"
-print("\nCompile command:\n", cmd)
-
-proc = subprocess.run(cmd, shell=True, cwd=str(cpp_dir), capture_output=True, text=True)
-print("returncode:", proc.returncode)
-if proc.stdout:
-    print("\n--- stdout ---\n", proc.stdout)
-if proc.stderr:
-    print("\n--- stderr ---\n", proc.stderr)
-
-if out_so.exists():
-    print("\nBuilt:", out_so)
-    # ensure cpp_dir on sys.path
-    if str(cpp_dir) not in sys.path:
-        sys.path.insert(0, str(cpp_dir))
-    # ensure LD_LIBRARY_PATH includes conda lib (for subprocesses)
-    os.environ["LD_LIBRARY_PATH"] = conda_lib + (":" + os.environ.get("LD_LIBRARY_PATH", "")) if os.environ.get("LD_LIBRARY_PATH") else conda_lib
-    print("LD_LIBRARY_PATH set to start with conda lib:", os.environ["LD_LIBRARY_PATH"].split(":")[0])
-    try:
-        m = importlib.import_module("MLCodec_extensions_cpp")
-        print("Imported MLCodec_extensions_cpp:", m)
-    except Exception as e:
-        print("Import failed after rebuild:", repr(e))
-        # show ldd
-        print("\nldd output for built .so:")
-        ldd = subprocess.run(f"ldd {out_so}", shell=True, capture_output=True, text=True)
-        print(ldd.stdout)
-        print(ldd.stderr)
-else:
-    raise RuntimeError("Build did not produce output .so — see stderr above")
+/bin/bash: /home/work/dcvc/miniconda3/envs/dcvc_rt_env_1/lib/libtinfo.so.6: no version information available (required by /bin/bash)
