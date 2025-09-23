@@ -1,63 +1,49 @@
-# Try upgrading conda C++ runtime to a newer release and rebuild the extension
-import subprocess, sys, os
-from pathlib import Path
+Running: conda install -y -c conda-forge libstdcxx-ng=15.1.0 libgcc-ng=15.1.0 || true
+conda returncode: 0
+--- conda stdout (truncated) ---
+Channels:
+ - conda-forge
+ - defaults
+Platform: linux-64
+Collecting package metadata (repodata.json): ...working... done
+Solving environment: ...working... done
 
-repo_root = Path("/home/work/dcvc/dcvc_try_p").resolve()
-py_rans_dir = repo_root / "src" / "cpp" / "py_rans"
-cpp_dir = repo_root / "src" / "cpp"
-out_so = cpp_dir / "MLCodec_extensions_cpp.so"
-conda_env_lib = "/home/work/dcvc/miniconda3/envs/dcvc_rt_env_1/lib"
+# All requested packages already installed.
 
-# 1) Force install specific newer versions (pick a 15.x release known to include GLIBCXX_3.4.30)
-conda_cmd = "conda install -y -c conda-forge libstdcxx-ng=15.1.0 libgcc-ng=15.1.0 || true"
-print("Running:", conda_cmd)
-proc = subprocess.run(conda_cmd, shell=True, capture_output=True, text=True)
-print("conda returncode:", proc.returncode)
-print("--- conda stdout (truncated) ---")
-print(proc.stdout[:2000])
-print("--- conda stderr (truncated) ---")
-print(proc.stderr[:2000])
 
-# 2) Rebuild using g++ and embed rpath to conda_env_lib
-import sysconfig, pybind11
-py_inc = sysconfig.get_paths()["include"]
-pybind_inc = pybind11.get_include()
-sources = sorted([str(p) for p in py_rans_dir.glob("*.cpp")])
-compiler = os.environ.get("CXX", "g++")
-rpath_flag = f"-Wl,-rpath,{conda_env_lib}"
-cflags = "-O3 -std=c++14 -fPIC -shared -Wl,-O1 -Wl,--as-needed"
-include_flags = f"-I{py_inc} -I{pybind_inc} -I{py_rans_dir}"
-cmd = f"{compiler} {cflags} {include_flags} {' '.join(sources)} -o {out_so} {rpath_flag}"
-print("\nRebuild command:\n", cmd)
-proc2 = subprocess.run(cmd, shell=True, cwd=str(cpp_dir), capture_output=True, text=True)
-print("rebuild returncode:", proc2.returncode)
-print("--- rebuild stdout ---")
-print(proc2.stdout)
-print("--- rebuild stderr ---")
-print(proc2.stderr)
+--- conda stderr (truncated) ---
 
-# 3) Force use of conda lib at runtime for this process
-old_ld = os.environ.get("LD_LIBRARY_PATH", "")
-os.environ["LD_LIBRARY_PATH"] = conda_env_lib + (":" + old_ld if old_ld else "")
-print("\nLD_LIBRARY_PATH now starts with:", os.environ["LD_LIBRARY_PATH"].split(":")[0])
 
-# 4) Try import and print ldd diagnostics if it fails
-import importlib
-if str(cpp_dir) not in sys.path:
-    sys.path.insert(0, str(cpp_dir))
-print("\nTrying to import MLCodec_extensions_cpp...")
-try:
-    m = importlib.import_module("MLCodec_extensions_cpp")
-    print("Imported MLCodec_extensions_cpp ->", m)
-    print("Success. You can now re-run your test script.")
-except Exception as e:
-    print("Import failed:", repr(e))
-    if out_so.exists():
-        print("\n--- ldd for built .so ---")
-        ldd_proc = subprocess.run(f"ldd {out_so}", shell=True, capture_output=True, text=True)
-        print(ldd_proc.stdout)
-        print(ldd_proc.stderr)
-    print("\nIf this still fails, please paste the import error + the ldd output above. Next options will be:")
-    print("  A) try a different libstdcxx-ng version (e.g. 15.2.0 or 14.x) via conda,")
-    print("  B) run the pipeline in Google Colab / another machine with modern GCC/CUDA, or")
-    print("  C) use the pure-PyTorch fallback (but you'll need a Python-only entropy coder path — more invasive).")
+Rebuild command:
+ g++ -O3 -std=c++14 -fPIC -shared -Wl,-O1 -Wl,--as-needed -I/home/work/dcvc/miniconda3/envs/dcvc_rt_env_1/include/python3.12 -I/home/work/dcvc/miniconda3/envs/dcvc_rt_env_1/lib/python3.12/site-packages/pybind11/include -I/home/work/dcvc/dcvc_try_p/src/cpp/py_rans /home/work/dcvc/dcvc_try_p/src/cpp/py_rans/py_rans.cpp /home/work/dcvc/dcvc_try_p/src/cpp/py_rans/rans.cpp -o /home/work/dcvc/dcvc_try_p/src/cpp/MLCodec_extensions_cpp.so -Wl,-rpath,/home/work/dcvc/miniconda3/envs/dcvc_rt_env_1/lib
+rebuild returncode: 0
+--- rebuild stdout ---
+
+--- rebuild stderr ---
+
+
+LD_LIBRARY_PATH now starts with: /home/work/dcvc/miniconda3/envs/dcvc_rt_env_1/lib
+
+Trying to import MLCodec_extensions_cpp...
+Import failed: ImportError("/home/work/dcvc/miniconda3/envs/dcvc_rt_env_1/bin/../lib/libstdc++.so.6: version `GLIBCXX_3.4.30' not found (required by /home/work/dcvc/dcvc_try_p/src/cpp/MLCodec_extensions_cpp.so)")
+
+--- ldd for built .so ---
+/home/work/dcvc/dcvc_try_p/src/cpp/MLCodec_extensions_cpp.so: /home/work/dcvc/miniconda3/envs/dcvc_rt_env_1/lib/libstdc++.so.6: version `GLIBCXX_3.4.30' not found (required by /home/work/dcvc/dcvc_try_p/src/cpp/MLCodec_extensions_cpp.so)
+	linux-vdso.so.1 (0x00007ffc6f4c1000)
+	/opt/kernel/libbaihook.so (0x00007f4cc639e000)
+	/opt/kernel/libnvmlhook.ubuntu18.04.x86_64.so (0x00007f4cc5e00000)
+	/opt/kernel/libcudahook.ubuntu18.04.x86_64.so (0x00007f4cc5800000)
+	libstdc++.so.6 => /home/work/dcvc/miniconda3/envs/dcvc_rt_env_1/lib/libstdc++.so.6 (0x00007f4cc55ec000)
+	libm.so.6 => /usr/lib/x86_64-linux-gnu/libm.so.6 (0x00007f4cc629b000)
+	libgcc_s.so.1 => /home/work/dcvc/miniconda3/envs/dcvc_rt_env_1/lib/libgcc_s.so.1 (0x00007f4cc6281000)
+	libc.so.6 => /usr/lib/x86_64-linux-gnu/libc.so.6 (0x00007f4cc53c4000)
+	/lib64/ld-linux-x86-64.so.2 (0x00007f4cc6425000)
+	libdl.so.2 => /usr/lib/x86_64-linux-gnu/libdl.so.2 (0x00007f4cc627c000)
+
+/bin/bash: /home/work/dcvc/miniconda3/envs/dcvc_rt_env_1/lib/libtinfo.so.6: no version information available (required by /bin/bash)
+
+
+If this still fails, please paste the import error + the ldd output above. Next options will be:
+  A) try a different libstdcxx-ng version (e.g. 15.2.0 or 14.x) via conda,
+  B) run the pipeline in Google Colab / another machine with modern GCC/CUDA, or
+  C) use the pure-PyTorch fallback (but you'll need a Python-only entropy coder path — more invasive).
