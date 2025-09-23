@@ -1,72 +1,78 @@
-Running: conda install -y -c conda-forge libstdcxx-ng libgcc-ng || true
-conda returncode: 0
---- conda stdout (first 2000 chars) ---
-Channels:
- - conda-forge
- - defaults
-Platform: linux-64
-Collecting package metadata (repodata.json): ...working... done
-Solving environment: ...working... done
+# Force use of conda env libstdc++ at runtime, retry import, and re-run test script
+import os, sys, subprocess, importlib
+from pathlib import Path
 
-## Package Plan ##
+repo_root = Path("/home/work/dcvc/dcvc_try_p").resolve()
+cpp_dir = repo_root / "src" / "cpp"
+so_path = cpp_dir / "MLCodec_extensions_cpp.so"
 
-  environment location: /home/work/dcvc/miniconda3
+# 1) Prepend conda env lib dir to LD_LIBRARY_PATH for this process and subprocesses
+conda_env_lib = "/home/work/dcvc/miniconda3/envs/dcvc_rt_env_1/lib"
+old_ld = os.environ.get("LD_LIBRARY_PATH", "")
+if conda_env_lib not in old_ld.split(":"):
+    os.environ["LD_LIBRARY_PATH"] = conda_env_lib + (":" + old_ld if old_ld else "")
+print("LD_LIBRARY_PATH now starts with:", os.environ["LD_LIBRARY_PATH"].split(":")[0])
 
-  added / updated specs:
-    - libgcc-ng
-    - libstdcxx-ng
+# 2) Ensure cpp_dir is on sys.path for imports
+if str(cpp_dir) not in sys.path:
+    sys.path.insert(0, str(cpp_dir))
+print("sys.path[0:4]:", sys.path[:4])
 
+# 3) Try import
+print("\nAttempting to import MLCodec_extensions_cpp...")
+try:
+    m = importlib.import_module("MLCodec_extensions_cpp")
+    print("Imported MLCodec_extensions_cpp:", m)
+except Exception as e:
+    print("Import failed:", repr(e))
+    # show ldd diagnostics to understand which lib is picked
+    if so_path.exists():
+        print("\n--- ldd for the built .so ---")
+        proc = subprocess.run(f"ldd {so_path}", shell=True, capture_output=True, text=True)
+        print(proc.stdout)
+        print(proc.stderr)
+    raise
 
-The following packages will be downloaded:
+# 4) If import succeeded, show ldd to verify libstdc++ now points to conda env lib
+print("\nImport succeeded. Verifying linked libraries (ldd):")
+proc = subprocess.run(f"ldd {so_path}", shell=True, capture_output=True, text=True)
+print(proc.stdout)
 
-    package                    |            build
-    ---------------------------|-----------------
-    certifi-2025.8.3           |     pyhd8ed1ab_0         155 KB  conda-forge
-    conda-24.11.3              |   py39hf3d152e_0         897 KB  conda-forge
-    libstdcxx-ng-15.1.0        |       h4852527_5          29 KB  conda-forge
-    openssl-3.5.3              |       h26f9b46_1         3.0 MB  conda-forge
-    python_abi-3.9             |           2_cp39           4 KB  conda-forge
-    ------------------------------------------------------------
-                                           Total:         4.0 MB
+# 5) Re-run test_video.py as subprocess with LD_LIBRARY_PATH preserved
+print("\nRe-running test_video.py with updated LD_LIBRARY_PATH (streams output)...")
+env = os.environ.copy()
+env["PYTHONPATH"] = str(repo_root) + ":" + env.get("PYTHONPATH", "")
+# ensure subprocess uses same LD_LIBRARY_PATH
+env["LD_LIBRARY_PATH"] = os.environ["LD_LIBRARY_PATH"]
 
-The following NEW packages will be INSTALLED:
+cmd_list = [
+    sys.executable, str(repo_root / "test_video.py"),
+    "--model_path_i", "./checkpoints/cvpr2025_image.pth.tar",
+    "--model_path_p", "./checkpoints/cvpr2025_video.pth.tar",
+    "--rate_num", "4",
+    "--test_config", "./dataset_config_example_yuv420.json",
+    "--cuda", "1",
+    "-w", "1",
+    "--write_stream", "1",
+    "--force_zero_thres", "0.12",
+    "--output_path", "output.json",
+    "--force_intra_period", "-1",
+    "--reset_interval", "64",
+    "--force_frame_num", "-1",
+    "--check_existing", "0",
+    "--verbose", "0",
+]
 
-  libgcc             conda-forge/linux-64::libgcc-15.1.0-h767d61c_5 
-  libstdcxx          conda-forge/linux-64::libstdcxx-15.1.0-h8f9b012_5 
-  python_abi         conda-forge/linux-64::python_abi-3.9-2_cp39 
-
-The following packages will be UPDATED:
-
-  ca-certificates    pkgs/main/linux-64::ca-certificates-2~ --> conda-forge/noarch::ca-certificates-2025.8.3-hbd8a1cb_0 
-  certifi            pkgs/main/linux-64::certifi-2024.8.30~ --> conda-forge/noarch::certifi-2025.8.3-pyhd8ed1ab_0 
-  conda              pkgs/main::conda-24.11.1-py39h06a4308~ --> conda-forge::conda-24.11.3-py39hf3d152e_0 
-  libgcc-ng          pkgs/main::libgcc-ng-11.2.0-h1234567_1 --> conda-forge::libgcc-ng-15.1.0-h69a702a_5 
-  libgomp              pkgs/main::libgomp-11.2.0-h1234567_1 --> conda-forge::libgomp-15.1.0-h767d61c_5 
-  libstdcxx-ng       pkgs/main::libstdcxx-ng-11.2.0-h12345~ --> conda-forge::libstdcxx-ng-15.1.0-h4852527_5 
-  openssl              pkgs/main::openssl-3.0.15-h5eee18b_0 --> conda-forge::opens
---- conda stderr (first 2000 chars) ---
-
-sys.path[0:4]: ['/home/work/dcvc/dcvc_try_p/src/cpp', '/home/work/dcvc/dcvc_try_p', '', '/home/work/.local/lib/python3.10/site-packages']
-
-Trying to import MLCodec_extensions_cpp...
-Import still failed: ImportError("/home/work/dcvc/miniconda3/envs/dcvc_rt_env_1/bin/../lib/libstdc++.so.6: version `GLIBCXX_3.4.30' not found (required by /home/work/dcvc/dcvc_try_p/src/cpp/MLCodec_extensions_cpp.so)")
-
-Diagnostic: show libstdc++ used by python process (ldd on module if present)
---- ldd output ---
-	linux-vdso.so.1 (0x00007ffdb51ac000)
-	/opt/kernel/libbaihook.so (0x00007faf674ff000)
-	/opt/kernel/libnvmlhook.ubuntu18.04.x86_64.so (0x00007faf67000000)
-	/opt/kernel/libcudahook.ubuntu18.04.x86_64.so (0x00007faf66a00000)
-	libstdc++.so.6 => /usr/lib/x86_64-linux-gnu/libstdc++.so.6 (0x00007faf667d4000)
-	libm.so.6 => /usr/lib/x86_64-linux-gnu/libm.so.6 (0x00007faf66f19000)
-	libgcc_s.so.1 => /usr/lib/x86_64-linux-gnu/libgcc_s.so.1 (0x00007faf674c3000)
-	libc.so.6 => /usr/lib/x86_64-linux-gnu/libc.so.6 (0x00007faf665ac000)
-	/lib64/ld-linux-x86-64.so.2 (0x00007faf67586000)
-	libdl.so.2 => /usr/lib/x86_64-linux-gnu/libdl.so.2 (0x00007faf674be000)
-
-
-An exception has occurred, use %tb to see the full traceback.
-
-SystemExit: Import failed; see output above. Paste the import error + ldd output if you want further help.
-/home/work/dcvc/miniconda3/envs/dcvc_rt_env_1/lib/python3.12/site-packages/IPython/core/interactiveshell.py:3707: UserWarning: To exit: use 'exit', 'quit', or Ctrl-D.
-  warn("To exit: use 'exit', 'quit', or Ctrl-D.", stacklevel=1)
+print("Running:", " ".join(cmd_list))
+proc = subprocess.Popen(cmd_list, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
+try:
+    for line in proc.stdout:
+        print(line, end="")
+except KeyboardInterrupt:
+    proc.terminate()
+    proc.wait()
+    print("\nSubprocess terminated by user.")
+finally:
+    proc.stdout.close()
+    rc = proc.wait()
+    print(f"\nSubprocess finished with return code: {rc}")
