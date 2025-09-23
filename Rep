@@ -1,331 +1,276 @@
-ls -R
-
-.:
- CODE_OF_CONDUCT.md   SECURITY.md                          requirements.txt
- CONTRIBUTING.md      assets/                              src/
- DCVC-family/         azure-pipelines.yml                  test_conditions.md
- LICENSE.txt          checkpoints/                         test_video.py
-'NOTICE .txt'         dataset_config_example_yuv420.json
- README.md            media/
-
-./DCVC-family:
-DCVC/  DCVC-DC/  DCVC-FM/  DCVC-HEM/  DCVC-TCM/  EVC/  README.md
-
-./DCVC-family/DCVC:
-README.md     dataset_config_example.json  test_video.py
-assets/       requirements.txt             write_stream_readme.md
-checkpoints/  src/
-
-./DCVC-family/DCVC/assets:
-rd_curve_psnr.png
-
-./DCVC-family/DCVC/checkpoints:
-download_compressai_models.py
-
-./DCVC-family/DCVC/src:
-cpp/  entropy_models/  layers/  models/  ops/  utils/  zoo/
-
-./DCVC-family/DCVC/src/cpp:
-3rdparty/  CMakeLists.txt  ops/  rans/
-
-./DCVC-family/DCVC/src/cpp/3rdparty:
-CMakeLists.txt  pybind11/  ryg_rans/
-
-./DCVC-family/DCVC/src/cpp/3rdparty/pybind11:
-CMakeLists.txt  CMakeLists.txt.in
-
-./DCVC-family/DCVC/src/cpp/3rdparty/ryg_rans:
-CMakeLists.txt  CMakeLists.txt.in
-
-./DCVC-family/DCVC/src/cpp/ops:
-CMakeLists.txt  ops.cpp
-
-./DCVC-family/DCVC/src/cpp/rans:
-CMakeLists.txt  rans_interface.cpp  rans_interface.hpp
-
-./DCVC-family/DCVC/src/entropy_models:
-entropy_models.py  video_entropy_models.py
-
-./DCVC-family/DCVC/src/layers:
-gdn.py  layers.py
-
-./DCVC-family/DCVC/src/models:
-DCVC_net.py  priors.py  utils.py  video_net.py  waseda.py
-
-./DCVC-family/DCVC/src/ops:
-bound_ops.py  parametrizers.py
-
-./DCVC-family/DCVC/src/utils:
-stream_helper.py
-
-./DCVC-family/DCVC/src/zoo:
-image.py
-
-./DCVC-family/DCVC-DC:
-README.md     dataset_config_example_rgb.json     src/
-assets/       dataset_config_example_yuv420.json  test_data_to_png.py
-checkpoints/  requirements.txt                    test_video.py
-
-./DCVC-family/DCVC-DC/assets:
-bitsaving.png  rd_rgb_psnr.png  rd_yuv420_psnr.png
-
-./DCVC-family/DCVC-DC/checkpoints:
-download.py
-
-./DCVC-family/DCVC-DC/src:
-cpp/  models/  transforms/  utils/
-
-./DCVC-family/DCVC-DC/src/cpp:
-3rdparty/  CMakeLists.txt  ops/  py_rans/  rans/
-
-./DCVC-family/DCVC-DC/src/cpp/3rdparty:
-CMakeLists.txt  pybind11/  ryg_rans/
-
-./DCVC-family/DCVC-DC/src/cpp/3rdparty/pybind11:
-CMakeLists.txt  CMakeLists.txt.in
-
-./DCVC-family/DCVC-DC/src/cpp/3rdparty/ryg_rans:
-CMakeLists.txt  CMakeLists.txt.in
-
-./DCVC-family/DCVC-DC/src/cpp/ops:
-CMakeLists.txt  ops.cpp
-
-./DCVC-family/DCVC-DC/src/cpp/py_rans:
-CMakeLists.txt  py_rans.cpp  py_rans.h
-
-./DCVC-family/DCVC-DC/src/cpp/rans:
-CMakeLists.txt  rans.cpp  rans.h
-
-./DCVC-family/DCVC-DC/src/models:
-common_model.py    image_model.py  video_model.py
-entropy_models.py  layers.py       video_net.py
-
-./DCVC-family/DCVC-DC/src/transforms:
-functional.py
-
-./DCVC-family/DCVC-DC/src/utils:
-common.py  metrics.py  stream_helper.py  video_reader.py  video_writer.py
-
-./DCVC-family/DCVC-FM:
-README.md     dataset_config_example_rgb.json     src/
-assets/       dataset_config_example_yuv420.json  test_data_to_png.py
-checkpoints/  requirements.txt                    test_video.py
-
-./DCVC-family/DCVC-FM/assets:
-bitsaving.png  rd_yuv420_psnr.png
-
-./DCVC-family/DCVC-FM/checkpoints:
-download.py
-
-./DCVC-family/DCVC-FM/src:
-cpp/  models/  transforms/  utils/
-
-./DCVC-family/DCVC-FM/src/cpp:
-3rdparty/  CMakeLists.txt  ops/  py_rans/  rans/
-
-./DCVC-family/DCVC-FM/src/cpp/3rdparty:
-CMakeLists.txt  pybind11/
-
-./DCVC-family/DCVC-FM/src/cpp/3rdparty/pybind11:
-CMakeLists.txt  CMakeLists.txt.in
-
-./DCVC-family/DCVC-FM/src/cpp/ops:
-CMakeLists.txt  ops.cpp
-
-./DCVC-family/DCVC-FM/src/cpp/py_rans:
-CMakeLists.txt  py_rans.cpp  py_rans.h
-
-./DCVC-family/DCVC-FM/src/cpp/rans:
-CMakeLists.txt  rans.cpp  rans.h  rans_byte.h
-
-./DCVC-family/DCVC-FM/src/models:
-block_mc.py      entropy_models.py  image_model.py  video_model.py
-common_model.py  extensions/        layers.py       video_net.py
-
-./DCVC-family/DCVC-FM/src/models/extensions:
-block_mc.cpp  block_mc.h  block_mc_kernel.cu  common.h  setup.py
-
-./DCVC-family/DCVC-FM/src/transforms:
-functional.py  transforms.py
-
-./DCVC-family/DCVC-FM/src/utils:
-common.py   stream_helper.py  video_reader.py
-metrics.py  test_helper.py    video_writer.py
-
-./DCVC-family/DCVC-HEM:
-README.md  checkpoints/                 requirements.txt  test_video.py
-assets/    dataset_config_example.json  src/
-
-./DCVC-family/DCVC-HEM/assets:
-rd_curve_psnr.png
-
-./DCVC-family/DCVC-HEM/checkpoints:
-download.py
-
-./DCVC-family/DCVC-HEM/src:
-cpp/  entropy_models/  layers/  models/  utils/
-
-./DCVC-family/DCVC-HEM/src/cpp:
-3rdparty/  CMakeLists.txt  ops/  rans/
-
-./DCVC-family/DCVC-HEM/src/cpp/3rdparty:
-CMakeLists.txt  pybind11/  ryg_rans/
-
-./DCVC-family/DCVC-HEM/src/cpp/3rdparty/pybind11:
-CMakeLists.txt  CMakeLists.txt.in
-
-./DCVC-family/DCVC-HEM/src/cpp/3rdparty/ryg_rans:
-CMakeLists.txt  CMakeLists.txt.in
-
-./DCVC-family/DCVC-HEM/src/cpp/ops:
-CMakeLists.txt  ops.cpp
-
-./DCVC-family/DCVC-HEM/src/cpp/rans:
-CMakeLists.txt  rans_interface.cpp  rans_interface.hpp
-
-./DCVC-family/DCVC-HEM/src/entropy_models:
-entropy_models.py
-
-./DCVC-family/DCVC-HEM/src/layers:
-layers.py
-
-./DCVC-family/DCVC-HEM/src/models:
-common_model.py  image_model.py  video_model.py  video_net.py
-
-./DCVC-family/DCVC-HEM/src/utils:
-common.py  png_reader.py  stream_helper.py
-
-./DCVC-family/DCVC-TCM:
-README.md                                requirements.txt
-checkpoints/                             src/
-recommended_test_full_results_IP12.json  test_video.py
-recommended_test_full_results_IP32.json
-
-./DCVC-family/DCVC-TCM/checkpoints:
-
-./DCVC-family/DCVC-TCM/src:
-cpp/  entropy_models/  layers/  models/  ops/  utils/
-
-./DCVC-family/DCVC-TCM/src/cpp:
-3rdparty/  CMakeLists.txt  ops/  rans/
-
-./DCVC-family/DCVC-TCM/src/cpp/3rdparty:
-CMakeLists.txt  pybind11/  ryg_rans/
-
-./DCVC-family/DCVC-TCM/src/cpp/3rdparty/pybind11:
-CMakeLists.txt  CMakeLists.txt.in
-
-./DCVC-family/DCVC-TCM/src/cpp/3rdparty/ryg_rans:
-CMakeLists.txt  CMakeLists.txt.in
-
-./DCVC-family/DCVC-TCM/src/cpp/ops:
-CMakeLists.txt  ops.cpp
-
-./DCVC-family/DCVC-TCM/src/cpp/rans:
-CMakeLists.txt  rans_interface.cpp  rans_interface.hpp
-
-./DCVC-family/DCVC-TCM/src/entropy_models:
-entropy_models.py  video_entropy_models.py
-
-./DCVC-family/DCVC-TCM/src/layers:
-gdn.py  layers.py
-
-./DCVC-family/DCVC-TCM/src/models:
-priors.py  utils.py  video_net.py  video_net_dmc.py
-
-./DCVC-family/DCVC-TCM/src/ops:
-bound_ops.py  parametrizers.py
-
-./DCVC-family/DCVC-TCM/src/utils:
-stream_helper.py
-
-./DCVC-family/EVC:
-README.md     model_complexity.py  run_test_image.py  test_image.py
-assets/       requirements.txt     src/
-checkpoints/  results/             test_cfg/
-
-./DCVC-family/EVC/assets:
-RD.png  dualprior.png  enc_dec.png  framework.png  hyperprior.png
-
-./DCVC-family/EVC/checkpoints:
-download.py
-
-./DCVC-family/EVC/results:
-RD_numbers.py
-
-./DCVC-family/EVC/src:
-cpp/  models/  utils/
-
-./DCVC-family/EVC/src/cpp:
-3rdparty/  CMakeLists.txt  ops/  py_rans/  rans/
-
-./DCVC-family/EVC/src/cpp/3rdparty:
-CMakeLists.txt  pybind11/  ryg_rans/
-
-./DCVC-family/EVC/src/cpp/3rdparty/pybind11:
-CMakeLists.txt  CMakeLists.txt.in
-
-./DCVC-family/EVC/src/cpp/3rdparty/ryg_rans:
-CMakeLists.txt  CMakeLists.txt.in
-
-./DCVC-family/EVC/src/cpp/ops:
-CMakeLists.txt  ops.cpp
-
-./DCVC-family/EVC/src/cpp/py_rans:
-CMakeLists.txt  py_rans.cpp  py_rans.h
-
-./DCVC-family/EVC/src/cpp/rans:
-CMakeLists.txt  rans.cpp  rans.h
-
-./DCVC-family/EVC/src/models:
-__init__.py      entropy_models.py  image_model.py  scalable_encoder_model.py
-common_model.py  hyperprior.py      layers.py
-
-./DCVC-family/EVC/src/utils:
-common.py  png_reader.py  stream_helper.py
-
-./DCVC-family/EVC/test_cfg:
-local_kodak.json
-
-./assets:
-RD-Curve.png                complexity.png             test_pipeline.png
-RGB_different_settings.png  intra_compare.png
-bd_rate_speed.png           practical_performance.png
-
-./checkpoints:
-cvpr2025_image.pth.tar  cvpr2025_video.pth.tar
-
-./media:
-data/
-
-./media/data:
-UVG/
-
-./media/data/UVG:
-Beauty_1920x1080_120fps_420_8bit_YUV.yuv
-
-./src:
-cpp/  layers/  models/  utils/
-
-./src/cpp:
-py_rans/  setup.py
-
-./src/cpp/py_rans:
-py_rans.cpp  py_rans.h  rans.cpp  rans.h  rans_byte.h
-
-./src/layers:
-cuda_inference.py  extensions/  layers.py
-
-./src/layers/extensions:
-inference/
-
-./src/layers/extensions/inference:
-bind.cpp  common.h  def.h  impl.cpp  kernel.cu  setup.py
-
-./src/models:
-common_model.py  entropy_models.py  image_model.py  video_model.py
-
-./src/utils:
-common.py   stream_helper.py  video_reader.py
-metrics.py  transforms.py     video_writer.py
-​
+{
+ "cells": [
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "# Run `test_video.py` without compiling C++ extensions\n",
+    "\n",
+    "This notebook creates a **pure-Python shim** for the C++ entropy coder (so you don't need to build C++ extensions), verifies imports, then runs your `test_video.py` command. The shim is a functional test-only replacement — it preserves symbol data but does **not** perform actual rANS compression, so bitstream sizes won't reflect a real entropy coder.\n",
+    "\n",
+    "Edit the command cell below if your checkpoint filenames/paths differ."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Cell 1: create a pure-Python MLCodec_extensions_cpp shim in src/\n",
+    "from pathlib import Path\n",
+    "Path(\"src\").mkdir(parents=True, exist_ok=True)\n",
+    "\n",
+    "shim = r'''\n",
+    "# Pure-Python shim replacement for MLCodec_extensions_cpp C++ extension.\n",
+    "# This is NOT a real rANS encoder/decoder: it serializes the encoded events\n",
+    "# (symbols arrays) into bytes so the pipeline can run without C++.\n",
+    "# It implements the minimal API used by src/models/entropy_models.py.\n",
+    "\n",
+    "import pickle\n",
+    "import numpy as np\n",
+    "\n",
+    "def pmf_to_quantized_cdf(pmf, precision=16):\n",
+    "    out = []\n",
+    "    for row in pmf:\n",
+    "        arr = np.array(row, dtype=np.float64)\n",
+    "        arr = arr / (arr.sum() + 1e-12)\n",
+    "        cumsum = np.cumsum(arr)\n",
+    "        scale = 1 << precision\n",
+    "        cdf = (cumsum * scale).astype(np.int64).tolist()\n",
+    "        out.append([0] + cdf)\n",
+    "    return out\n",
+    "\n",
+    "class RansEncoder:\n",
+    "    def __init__(self):\n",
+    "        self.reset()\n",
+    "        self._use_two = False\n",
+    "        self._cdfs = []\n",
+    "\n",
+    "    def reset(self):\n",
+    "        self._events = []\n",
+    "\n",
+    "    def add_cdf(self, cdf, cdf_length, offset):\n",
+    "        idx = len(self._cdfs)\n",
+    "        self._cdfs.append({\n",
+    "            \"cdf\": np.array(cdf, copy=True).tolist(),\n",
+    "            \"cdf_length\": (int(cdf_length) if not hasattr(cdf_length, 'tolist') else list(cdf_length)),\n",
+    "            \"offset\": (int(offset) if not hasattr(offset, 'tolist') else list(offset)),\n",
+    "        })\n",
+    "        return idx\n",
+    "\n",
+    "    def encode_y(self, symbols_np, cdf_group_index):\n",
+    "        self._events.append((\"y\", np.array(symbols_np, copy=True), int(cdf_group_index)))\n",
+    "\n",
+    "    def encode_z(self, symbols_int8_np, cdf_group_index, start_offset, per_channel_size):\n",
+    "        self._events.append((\"z\", np.array(symbols_int8_np, copy=True), int(cdf_group_index),\n",
+    "                             int(start_offset), int(per_channel_size)))\n",
+    "\n",
+    "    def flush(self):\n",
+    "        pass\n",
+    "\n",
+    "    def get_encoded_stream(self):\n",
+    "        b = pickle.dumps({\"cdfs\": self._cdfs, \"events\": self._events})\n",
+    "        return np.frombuffer(b, dtype=np.uint8)\n",
+    "\n",
+    "    def set_use_two_encoders(self, v):\n",
+    "        self._use_two = bool(v)\n",
+    "\n",
+    "class RansDecoder:\n",
+    "    def __init__(self):\n",
+    "        self.reset()\n",
+    "        self._use_two = False\n",
+    "        self._cdfs = []\n",
+    "\n",
+    "    def reset(self):\n",
+    "        self._decoded_queue = []\n",
+    "        self._cdfs = []\n",
+    "        self._stream_events = []\n",
+    "\n",
+    "    def set_stream(self, np_array):\n",
+    "        b = bytes(np_array)\n",
+    "        payload = pickle.loads(b)\n",
+    "        self._cdfs = payload.get(\"cdfs\", [])\n",
+    "        self._stream_events = payload.get(\"events\", [])\n",
+    "        self._event_idx = 0\n",
+    "\n",
+    "    def add_cdf(self, cdf, cdf_length, offset):\n",
+    "        idx = len(self._cdfs)\n",
+    "        self._cdfs.append({\n",
+    "            \"cdf\": np.array(cdf, copy=True).tolist(),\n",
+    "            \"cdf_length\": (int(cdf_length) if not hasattr(cdf_length, 'tolist') else list(cdf_length)),\n",
+    "            \"offset\": (int(offset) if not hasattr(offset, 'tolist') else list(offset)),\n",
+    "        })\n",
+    "        return idx\n",
+    "\n",
+    "    def decode_y(self, indexes_np, cdf_group_index):\n",
+    "        if self._event_idx >= len(self._stream_events):\n",
+    "            return\n",
+    "        evt = self._stream_events[self._event_idx]\n",
+    "        self._event_idx += 1\n",
+    "        if evt[0] != \"y\":\n",
+    "            found = False\n",
+    "            while self._event_idx < len(self._stream_events):\n",
+    "                evt = self._stream_events[self._event_idx]\n",
+    "                self._event_idx += 1\n",
+    "                if evt[0] == \"y\":\n",
+    "                    found = True\n",
+    "                    break\n",
+    "            if not found:\n",
+    "                return\n",
+    "        sym = evt[1]\n",
+    "        self._decoded_queue.append(np.array(sym, copy=True))\n",
+    "\n",
+    "    def decode_and_get_y(self, indexes_np, cdf_group_index):\n",
+    "        self.decode_y(indexes_np, cdf_group_index)\n",
+    "        if not self._decoded_queue:\n",
+    "            return np.array([], dtype=np.int16)\n",
+    "        return self._decoded_queue.pop(0)\n",
+    "\n",
+    "    def decode_z(self, total_size, cdf_group_index, start_offset, per_channel_size):\n",
+    "        if self._event_idx >= len(self._stream_events):\n",
+    "            return\n",
+    "        evt = self._stream_events[self._event_idx]\n",
+    "        self._event_idx += 1\n",
+    "        if evt[0] != \"z\":\n",
+    "            found = False\n",
+    "            while self._event_idx < len(self._stream_events):\n",
+    "                evt = self._stream_events[self._event_idx]\n",
+    "                self._event_idx += 1\n",
+    "                if evt[0] == \"z\":\n",
+    "                    found = True\n",
+    "                    break\n",
+    "            if not found:\n",
+    "                return\n",
+    "        sym = evt[1]\n",
+    "        self._decoded_queue.append(np.array(sym, copy=True))\n",
+    "\n",
+    "    def get_decoded_tensor(self):\n",
+    "        if not self._decoded_queue:\n",
+    "            return np.array([], dtype=np.int8)\n",
+    "        arr = self._decoded_queue.pop(0)\n",
+    "        return arr\n",
+    "\n",
+    "    def set_use_two_decoders(self, v):\n",
+    "        self._use_two = bool(v)\n",
+    "'''\n",
+    "Path(\"src/MLCodec_extensions_cpp.py\").write_text(shim)\n",
+    "print(\"Wrote src/MLCodec_extensions_cpp.py\")\n"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Cell 2: verify imports and that the shim can be imported\n",
+    "import sys, os\n",
+    "repo_root = os.getcwd()\n",
+    "if repo_root not in sys.path:\n",
+    "    sys.path.insert(0, repo_root)\n",
+    "\n",
+    "try:\n",
+    "    import MLCodec_extensions_cpp as shim\n",
+    "    print('Imported MLCodec_extensions_cpp shim OK')\n",
+    "except Exception as e:\n",
+    "    print('Failed to import shim:', e)\n",
+    "\n",
+    "# Try importing entropy_models (it will import the shim)\n",
+    "try:\n",
+    "    from src.models import entropy_models\n",
+    "    print('Imported src.models.entropy_models OK')\n",
+    "except Exception as e:\n",
+    "    print('Importing src.models.entropy_models failed (may still run if test_video.py runs from repo root):', e)\n"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Cell 3: quick functional test of the shim\n",
+    "import numpy as np\n",
+    "from MLCodec_extensions_cpp import RansEncoder, RansDecoder, pmf_to_quantized_cdf\n",
+    "enc = RansEncoder()\n",
+    "enc.reset()\n",
+    "cdf_idx = enc.add_cdf([[0,1,2]], [3], 0)\n",
+    "arr = np.array([1,2,3], dtype=np.int16)\n",
+    "enc.encode_y(arr, cdf_idx)\n",
+    "enc.flush()\n",
+    "stream = enc.get_encoded_stream()\n",
+    "print('Encoded stream bytes len:', stream.nbytes)\n",
+    "dec = RansDecoder()\n",
+    "dec.set_stream(stream)\n",
+    "dec.add_cdf([[0,1,2]], [3], 0)\n",
+    "dec.decode_y(np.array([1,2,3], dtype=np.uint8), 0)\n",
+    "res = dec.decode_and_get_y(np.array([1,2,3], dtype=np.uint8), 0)\n",
+    "print('Decoded shape (expected matches input length):', getattr(res, 'shape', None))\n"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Cell 4: run `test_video.py` with your command (edit paths if needed)\n",
+    "import subprocess, shlex\n",
+    "\n",
+    "cmd = (\n",
+    "    \"python test_video.py \"\n",
+    "    \"--model_path_i ./checkpoints/cvpr2025_image.pth.tar \"\n",
+    "    \"--model_path_p ./checkpoints/cvpr2025_video.pth.tar \"\n",
+    "    \"--rate_num 4 \"\n",
+    "    \"--test_config ./dataset_config_example_yuv420.json \"\n",
+    "    \"--cuda 1 -w 1 --write_stream 1 \"\n",
+    "    \"--force_zero_thres 0.12 \"\n",
+    "    \"--output_path output.json \"\n",
+    "    \"--force_intra_period -1 \"\n",
+    "    \"--reset_interval 64 \"\n",
+    "    \"--force_frame_num -1 \"\n",
+    "    \"--check_existing 0 --verbose 0\"\n",
+    ")\n",
+    "print('Running:')\n",
+    "print(cmd)\n",
+    "proc = subprocess.Popen(shlex.split(cmd), stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)\n",
+    "for line in proc.stdout:\n",
+    "    print(line, end='')\n",
+    "proc.wait()\n",
+    "print('Exit code:', proc.returncode)\n"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## Notes & next steps\n",
+    "\n",
+    "- This shim is for functional testing only. Bitstream sizes are not compressed — they are serialized event pickles.\n",
+    "- If you need **real** entropy coding (rANS) in Python (slower but accurate bit sizes), I can add a pure-Python rANS implementation and swap it into `src/MLCodec_extensions_cpp.py`.\n",
+    "- If you get import errors in the notebook, ensure the notebook's working directory is the repository root (the folder containing `src/` and `test_video.py`). Run `!pwd` (or `import os; os.getcwd()`) to check and `os.chdir('/path/to/repo')` if needed.\n",
+    "\n",
+    "If you want, I can now:\n",
+    "1. produce a version with a pure-Python rANS implementation (slower but gives accurate bitrate), or\n",
+    "2. produce a small ZIP / ready `.ipynb` file (already provided as JSON above), or\n",
+    "3. modify the shim to include a fake-but-compact bit-length header to make reported bits more realistic.\n",
+    "\n",
+    "Tell me which next (or just run the notebook)."
+   ]
+  }
+ ],
+ "metadata": {
+  "kernelspec": {
+   "display_name": "Python 3",
+   "language": "python",
+   "name": "python3"
+  },
+  "language_info": {
+   "name": "python",
+   "version": ""
+  }
+ },
+ "nbformat": 4,
+ "nbformat_minor": 5
+}
