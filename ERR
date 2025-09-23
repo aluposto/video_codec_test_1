@@ -1,9 +1,111 @@
-# Run test_video.py as a subprocess (recommended — avoids multiprocessing pickling errors)
+The error is clear: the subprocess failed because the native RANS Python extension MLCodec_extensions_cpp (the repo’s py_rans / entropy coder bindings) is not built, so the worker process aborts on import and the process pool breaks.
+
+Two things to do (in order):
+
+1. Build the RANS/Python extension (py_rans) so MLCodec_extensions_cpp becomes importable.
+
+
+2. (Optional but recommended) Build the CUDA inference extension so you stop seeing the “fallback to pytorch” message.
+
+
+
+Below are three ready-to-run notebook cells you can paste and run (one after another). They:
+
+build the py_rans extension in-place,
+
+build the CPU/CUDA inference extension (if you have CUDA / nvcc; if not, it will likely fail but you can still use the PyTorch fallback), and
+
+re-run test_video.py as a subprocess (same command you used).
+
+
+If any build fails, paste the stderr here and I’ll interpret it.
+
+
+---
+
+Cell 1 — Build the RANS Python extension (MLCodec_extensions_cpp)
+
+# Cell 1: build the py_rans / MLCodec_extensions_cpp extension
 import subprocess, sys, os
 from pathlib import Path
 
 repo_root = Path("/home/work/dcvc/dcvc_try_p").resolve()
-# ensure the subprocess sees repo_root on PYTHONPATH
+py_rans_dir = repo_root / "src" / "cpp" / "py_rans"
+
+print("py_rans dir:", py_rans_dir)
+if not py_rans_dir.exists():
+    raise FileNotFoundError(f"{py_rans_dir} not found. Adjust repo_root if needed.")
+
+# Ensure some build tools are available: try to call python setup.py build_ext --inplace
+cmd = [sys.executable, "setup.py", "build_ext", "--inplace"]
+print("Running:", " ".join(cmd), "in", str(py_rans_dir))
+proc = subprocess.run(cmd, cwd=str(py_rans_dir), capture_output=True, text=True)
+
+print("returncode:", proc.returncode)
+print("----- stdout -----")
+print(proc.stdout[:4000])
+print("----- stderr -----")
+print(proc.stderr[:8000])
+
+if proc.returncode != 0:
+    print("\nBuild failed. Common causes: missing C/C++ compiler, missing python dev headers, or incompatible Python version.")
+    print("If build failed, paste the stderr here and I'll help debug.")
+else:
+    print("\npy_rans built. Check for a generated .so file in the directory. You should now be able to 'import MLCodec_extensions_cpp' from Python.")
+
+Notes:
+
+The directory contains py_rans.cpp, rans.cpp, etc. The setup script should compile it into a shared object like MLCodec_extensions_cpp.*.so.
+
+If you see errors about pybind11 missing, install it: pip install pybind11.
+
+If you see compiler errors about gcc/g++ missing, install build-essential (or equivalent) in your environment/container.
+
+
+
+---
+
+Cell 2 — Build CUDA inference extension (optional)
+
+# Cell 2: build inference extension (optional — requires CUDA toolchain)
+import subprocess, sys, os
+from pathlib import Path
+
+repo_root = Path("/home/work/dcvc/dcvc_try_p").resolve()
+inf_dir = repo_root / "src" / "layers" / "extensions" / "inference"
+
+print("inference ext dir:", inf_dir)
+if not inf_dir.exists():
+    print("Inference extension directory not found; skipping build.")
+else:
+    cmd = [sys.executable, "setup.py", "build_ext", "--inplace"]
+    print("Running:", " ".join(cmd), "in", str(inf_dir))
+    proc = subprocess.run(cmd, cwd=str(inf_dir), capture_output=True, text=True)
+    print("returncode:", proc.returncode)
+    print("----- stdout -----")
+    print(proc.stdout[:4000])
+    print("----- stderr -----")
+    print(proc.stderr[:8000])
+    if proc.returncode == 0:
+        print("\nInference extension built. Re-run test to pick up native CUDA implementation.")
+    else:
+        print("\nInference build failed — you can continue using the PyTorch fallback (it's slower). Paste stderr if you want help.")
+
+Notes:
+
+This requires nvcc & CUDA headers. If you don’t have CUDA dev installed, skip this cell and rely on the fallback.
+
+
+
+---
+
+Cell 3 — Re-run test_video.py as subprocess (same args)
+
+# Cell 3: run test_video.py (subprocess) — same command as before
+import subprocess, sys, os
+from pathlib import Path
+
+repo_root = Path("/home/work/dcvc/dcvc_try_p").resolve()
 env = os.environ.copy()
 env["PYTHONPATH"] = str(repo_root) + (":" + env.get("PYTHONPATH", "")) if env.get("PYTHONPATH") else str(repo_root)
 
@@ -28,59 +130,40 @@ cmd = [
 print("Running:", " ".join(cmd))
 proc = subprocess.Popen(cmd, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
 
-# Stream output live to notebook
 try:
     for line in proc.stdout:
-        print(line, end="")   # already contains newline
+        print(line, end="")
 except KeyboardInterrupt:
     proc.terminate()
     proc.wait()
     print("\nSubprocess terminated by user.")
-
-
-
-
-
-
-
-
-
-
-
-Running: /home/work/dcvc/miniconda3/envs/dcvc_rt_env_1/bin/python /home/work/dcvc/dcvc_try_p/test_video.py --model_path_i ./checkpoints/cvpr2025_image.pth.tar --model_path_p ./checkpoints/cvpr2025_video.pth.tar --rate_num 4 --test_config ./dataset_config_example_yuv420.json --cuda 1 -w 1 --write_stream 1 --force_zero_thres 0.12 --output_path output.json --force_intra_period -1 --reset_interval 64 --force_frame_num -1 --check_existing 0 --verbose 0
-cannot import cuda implementation for inference, fallback to pytorch.
-testing 4 rates, using qp: 0, 21, 42, 63, 
-
-  0%|          | 0/212 [00:00<?, ?it/s]cannot import cuda implementation for inference, fallback to pytorch.
-Exception in initializer:
-Traceback (most recent call last):
-  File "/home/work/dcvc/miniconda3/envs/dcvc_rt_env_1/lib/python3.12/concurrent/futures/process.py", line 243, in _process_worker
-    initializer(*initargs)
-  File "/home/work/dcvc/dcvc_try_p/test_video.py", line 403, in init_func
-    i_frame_net.update(args.force_zero_thres)
-  File "/home/work/dcvc/dcvc_try_p/src/models/common_model.py", line 50, in update
-    self.entropy_coder = EntropyCoder()
-                         ^^^^^^^^^^^^^^
-  File "/home/work/dcvc/dcvc_try_p/src/models/entropy_models.py", line 15, in __init__
-    from MLCodec_extensions_cpp import RansEncoder, RansDecoder
-ModuleNotFoundError: No module named 'MLCodec_extensions_cpp'
-
-  0%|          | 0/212 [00:05<?, ?it/s]
-Traceback (most recent call last):
-  File "/home/work/dcvc/dcvc_try_p/test_video.py", line 541, in <module>
-    main()
-  File "/home/work/dcvc/dcvc_try_p/test_video.py", line 514, in main
-    result = obj.result()
-             ^^^^^^^^^^^^
-  File "/home/work/dcvc/miniconda3/envs/dcvc_rt_env_1/lib/python3.12/concurrent/futures/_base.py", line 456, in result
-    return self.__get_result()
-           ^^^^^^^^^^^^^^^^^^^
-  File "/home/work/dcvc/miniconda3/envs/dcvc_rt_env_1/lib/python3.12/concurrent/futures/_base.py", line 401, in __get_result
-    raise self._exception
-concurrent.futures.process.BrokenProcessPool: A process in the process pool was terminated abruptly while the future was running or pending.
-
-Subprocess finished with return code: 1
 finally:
     proc.stdout.close()
     rc = proc.wait()
     print(f"\nSubprocess finished with return code: {rc}")
+
+
+---
+
+If you run Cell 1 and it fails, paste the full stderr from Cell 1 here. The most common fixes:
+
+Missing pybind11 → pip install pybind11.
+
+Missing compiler → install build-essential / gcc / g++.
+
+Python ABI / version mismatch: e.g., extension built for different Python minor version. Verify sys.executable is the same Python you later use to run the script.
+
+If setup.py fails to find rans sources, check that the rans C files are present under src/cpp/py_rans or the sibling rans folder and that relative paths are correct (they usually are in this repo).
+
+
+If both builds succeed and you still get ModuleNotFoundError: No module named 'MLCodec_extensions_cpp', run this quick check in a cell and paste the output:
+
+import sys, importlib
+print("python:", sys.executable)
+print("sys.path[0:5]:", sys.path[:5])
+print("find_spec MLCodec_extensions_cpp:", importlib.util.find_spec("MLCodec_extensions_cpp"))
+
+That will show whether Python can see the compiled module.
+
+Want me to generate a one-liner to try installing pybind11 automatically and then building? I can, but I prefer to see your build logs first so I don’t guess the wrong fix.
+
