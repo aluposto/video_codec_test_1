@@ -1,77 +1,72 @@
-# Install newer C++ runtime into current conda env, retry import, then re-run test_video.py
-import subprocess, sys, os
-from pathlib import Path
-repo_root = Path("/home/work/dcvc/dcvc_try_p").resolve()
-cpp_dir = repo_root / "src" / "cpp"
+Running: conda install -y -c conda-forge libstdcxx-ng libgcc-ng || true
+conda returncode: 0
+--- conda stdout (first 2000 chars) ---
+Channels:
+ - conda-forge
+ - defaults
+Platform: linux-64
+Collecting package metadata (repodata.json): ...working... done
+Solving environment: ...working... done
 
-# 1) Install runtime libs via conda (non-root)
-cmd = "conda install -y -c conda-forge libstdcxx-ng libgcc-ng || true"
-print("Running:", cmd)
-proc = subprocess.run(cmd, shell=True, capture_output=True, text=True)
-print("conda returncode:", proc.returncode)
-print("--- conda stdout (first 2000 chars) ---")
-print(proc.stdout[:2000])
-print("--- conda stderr (first 2000 chars) ---")
-print(proc.stderr[:2000])
+## Package Plan ##
 
-# 2) Try importing the built extension (ensure cpp_dir is on sys.path)
-import sys, importlib
-cpp_dir_str = str(cpp_dir.resolve())
-if cpp_dir_str not in sys.path:
-    sys.path.insert(0, cpp_dir_str)
-print("sys.path[0:4]:", sys.path[:4])
+  environment location: /home/work/dcvc/miniconda3
 
-print("\nTrying to import MLCodec_extensions_cpp...")
-try:
-    m = importlib.import_module("MLCodec_extensions_cpp")
-    print("Imported MLCodec_extensions_cpp ->", m)
-except Exception as e:
-    print("Import still failed:", repr(e))
-    # Show which libstdc++ would be loaded by the process (diagnostic)
-    print("\nDiagnostic: show libstdc++ used by python process (ldd on module if present)")
-    so_path = cpp_dir / "MLCodec_extensions_cpp.so"
-    if so_path.exists():
-        ldd_proc = subprocess.run(f"ldd {so_path}", shell=True, capture_output=True, text=True)
-        print("--- ldd output ---")
-        print(ldd_proc.stdout)
-        print(ldd_proc.stderr)
-    else:
-        print("Compiled .so not found at", so_path)
-    raise SystemExit("Import failed; see output above. Paste the import error + ldd output if you want further help.")
+  added / updated specs:
+    - libgcc-ng
+    - libstdcxx-ng
 
-# 3) If import succeeded, re-run test_video.py as a subprocess
-if importlib.util.find_spec("MLCodec_extensions_cpp") is not None:
-    print("\nMLCodec_extensions_cpp importable — re-running test_video.py (subprocess).")
-    env = os.environ.copy()
-    # ensure repo root on PYTHONPATH for the subprocess
-    env["PYTHONPATH"] = str(repo_root) + ":" + env.get("PYTHONPATH", "")
-    cmd_list = [
-        sys.executable, str(repo_root / "test_video.py"),
-        "--model_path_i", "./checkpoints/cvpr2025_image.pth.tar",
-        "--model_path_p", "./checkpoints/cvpr2025_video.pth.tar",
-        "--rate_num", "4",
-        "--test_config", "./dataset_config_example_yuv420.json",
-        "--cuda", "1",
-        "-w", "1",
-        "--write_stream", "1",
-        "--force_zero_thres", "0.12",
-        "--output_path", "output.json",
-        "--force_intra_period", "-1",
-        "--reset_interval", "64",
-        "--force_frame_num", "-1",
-        "--check_existing", "0",
-        "--verbose", "0",
-    ]
-    print("Running:", " ".join(cmd_list))
-    proc = subprocess.Popen(cmd_list, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
-    try:
-        for line in proc.stdout:
-            print(line, end="")
-    except KeyboardInterrupt:
-        proc.terminate()
-        proc.wait()
-        print("\nSubprocess terminated by user.")
-    finally:
-        proc.stdout.close()
-        rc = proc.wait()
-        print(f"\nSubprocess finished with return code: {rc}")
+
+The following packages will be downloaded:
+
+    package                    |            build
+    ---------------------------|-----------------
+    certifi-2025.8.3           |     pyhd8ed1ab_0         155 KB  conda-forge
+    conda-24.11.3              |   py39hf3d152e_0         897 KB  conda-forge
+    libstdcxx-ng-15.1.0        |       h4852527_5          29 KB  conda-forge
+    openssl-3.5.3              |       h26f9b46_1         3.0 MB  conda-forge
+    python_abi-3.9             |           2_cp39           4 KB  conda-forge
+    ------------------------------------------------------------
+                                           Total:         4.0 MB
+
+The following NEW packages will be INSTALLED:
+
+  libgcc             conda-forge/linux-64::libgcc-15.1.0-h767d61c_5 
+  libstdcxx          conda-forge/linux-64::libstdcxx-15.1.0-h8f9b012_5 
+  python_abi         conda-forge/linux-64::python_abi-3.9-2_cp39 
+
+The following packages will be UPDATED:
+
+  ca-certificates    pkgs/main/linux-64::ca-certificates-2~ --> conda-forge/noarch::ca-certificates-2025.8.3-hbd8a1cb_0 
+  certifi            pkgs/main/linux-64::certifi-2024.8.30~ --> conda-forge/noarch::certifi-2025.8.3-pyhd8ed1ab_0 
+  conda              pkgs/main::conda-24.11.1-py39h06a4308~ --> conda-forge::conda-24.11.3-py39hf3d152e_0 
+  libgcc-ng          pkgs/main::libgcc-ng-11.2.0-h1234567_1 --> conda-forge::libgcc-ng-15.1.0-h69a702a_5 
+  libgomp              pkgs/main::libgomp-11.2.0-h1234567_1 --> conda-forge::libgomp-15.1.0-h767d61c_5 
+  libstdcxx-ng       pkgs/main::libstdcxx-ng-11.2.0-h12345~ --> conda-forge::libstdcxx-ng-15.1.0-h4852527_5 
+  openssl              pkgs/main::openssl-3.0.15-h5eee18b_0 --> conda-forge::opens
+--- conda stderr (first 2000 chars) ---
+
+sys.path[0:4]: ['/home/work/dcvc/dcvc_try_p/src/cpp', '/home/work/dcvc/dcvc_try_p', '', '/home/work/.local/lib/python3.10/site-packages']
+
+Trying to import MLCodec_extensions_cpp...
+Import still failed: ImportError("/home/work/dcvc/miniconda3/envs/dcvc_rt_env_1/bin/../lib/libstdc++.so.6: version `GLIBCXX_3.4.30' not found (required by /home/work/dcvc/dcvc_try_p/src/cpp/MLCodec_extensions_cpp.so)")
+
+Diagnostic: show libstdc++ used by python process (ldd on module if present)
+--- ldd output ---
+	linux-vdso.so.1 (0x00007ffdb51ac000)
+	/opt/kernel/libbaihook.so (0x00007faf674ff000)
+	/opt/kernel/libnvmlhook.ubuntu18.04.x86_64.so (0x00007faf67000000)
+	/opt/kernel/libcudahook.ubuntu18.04.x86_64.so (0x00007faf66a00000)
+	libstdc++.so.6 => /usr/lib/x86_64-linux-gnu/libstdc++.so.6 (0x00007faf667d4000)
+	libm.so.6 => /usr/lib/x86_64-linux-gnu/libm.so.6 (0x00007faf66f19000)
+	libgcc_s.so.1 => /usr/lib/x86_64-linux-gnu/libgcc_s.so.1 (0x00007faf674c3000)
+	libc.so.6 => /usr/lib/x86_64-linux-gnu/libc.so.6 (0x00007faf665ac000)
+	/lib64/ld-linux-x86-64.so.2 (0x00007faf67586000)
+	libdl.so.2 => /usr/lib/x86_64-linux-gnu/libdl.so.2 (0x00007faf674be000)
+
+
+An exception has occurred, use %tb to see the full traceback.
+
+SystemExit: Import failed; see output above. Paste the import error + ldd output if you want further help.
+/home/work/dcvc/miniconda3/envs/dcvc_rt_env_1/lib/python3.12/site-packages/IPython/core/interactiveshell.py:3707: UserWarning: To exit: use 'exit', 'quit', or Ctrl-D.
+  warn("To exit: use 'exit', 'quit', or Ctrl-D.", stacklevel=1)
