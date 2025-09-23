@@ -1,49 +1,319 @@
-Running: conda install -y -c conda-forge libstdcxx-ng=15.1.0 libgcc-ng=15.1.0 || true
-conda returncode: 0
---- conda stdout (truncated) ---
-Channels:
- - conda-forge
- - defaults
-Platform: linux-64
-Collecting package metadata (repodata.json): ...working... done
-Solving environment: ...working... done
+Great — I can help you bypass the C++ builds by dropping in a pure-Python replacement for the small MLCodec_extensions_cpp (RANS encoder/decoder + a CDF helper) used by the repo. This approach will let you run the whole pipeline without building any C++/CUDA extensions. Important note up front: the replacement below is a functional, Python-only fallback for testing and correctness verification — it does not implement RANS compression (so the output bitstreams will be much larger). It preserves the same Python API used by entropy_models.py so no other source changes are required.
 
-# All requested packages already installed.
+Plan
+
+1. Add a new Python module named MLCodec_extensions_cpp.py (placed in the same src package or anywhere on PYTHONPATH) that exports:
+
+RansEncoder and RansDecoder classes with the same methods used by EntropyCoder.
+
+pmf_to_quantized_cdf function used by EntropyCoder.pmf_to_quantized_cdf.
 
 
---- conda stderr (truncated) ---
+
+2. The encoder will simply record symbol arrays (no compression) into a Python structure and pickle that as the encoded stream.
 
 
-Rebuild command:
- g++ -O3 -std=c++14 -fPIC -shared -Wl,-O1 -Wl,--as-needed -I/home/work/dcvc/miniconda3/envs/dcvc_rt_env_1/include/python3.12 -I/home/work/dcvc/miniconda3/envs/dcvc_rt_env_1/lib/python3.12/site-packages/pybind11/include -I/home/work/dcvc/dcvc_try_p/src/cpp/py_rans /home/work/dcvc/dcvc_try_p/src/cpp/py_rans/py_rans.cpp /home/work/dcvc/dcvc_try_p/src/cpp/py_rans/rans.cpp -o /home/work/dcvc/dcvc_try_p/src/cpp/MLCodec_extensions_cpp.so -Wl,-rpath,/home/work/dcvc/miniconda3/envs/dcvc_rt_env_1/lib
-rebuild returncode: 0
---- rebuild stdout ---
-
---- rebuild stderr ---
+3. The decoder will unpickle the stream and return symbol arrays when requested.
 
 
-LD_LIBRARY_PATH now starts with: /home/work/dcvc/miniconda3/envs/dcvc_rt_env_1/lib
-
-Trying to import MLCodec_extensions_cpp...
-Import failed: ImportError("/home/work/dcvc/miniconda3/envs/dcvc_rt_env_1/bin/../lib/libstdc++.so.6: version `GLIBCXX_3.4.30' not found (required by /home/work/dcvc/dcvc_try_p/src/cpp/MLCodec_extensions_cpp.so)")
-
---- ldd for built .so ---
-/home/work/dcvc/dcvc_try_p/src/cpp/MLCodec_extensions_cpp.so: /home/work/dcvc/miniconda3/envs/dcvc_rt_env_1/lib/libstdc++.so.6: version `GLIBCXX_3.4.30' not found (required by /home/work/dcvc/dcvc_try_p/src/cpp/MLCodec_extensions_cpp.so)
-	linux-vdso.so.1 (0x00007ffc6f4c1000)
-	/opt/kernel/libbaihook.so (0x00007f4cc639e000)
-	/opt/kernel/libnvmlhook.ubuntu18.04.x86_64.so (0x00007f4cc5e00000)
-	/opt/kernel/libcudahook.ubuntu18.04.x86_64.so (0x00007f4cc5800000)
-	libstdc++.so.6 => /home/work/dcvc/miniconda3/envs/dcvc_rt_env_1/lib/libstdc++.so.6 (0x00007f4cc55ec000)
-	libm.so.6 => /usr/lib/x86_64-linux-gnu/libm.so.6 (0x00007f4cc629b000)
-	libgcc_s.so.1 => /home/work/dcvc/miniconda3/envs/dcvc_rt_env_1/lib/libgcc_s.so.1 (0x00007f4cc6281000)
-	libc.so.6 => /usr/lib/x86_64-linux-gnu/libc.so.6 (0x00007f4cc53c4000)
-	/lib64/ld-linux-x86-64.so.2 (0x00007f4cc6425000)
-	libdl.so.2 => /usr/lib/x86_64-linux-gnu/libdl.so.2 (0x00007f4cc627c000)
-
-/bin/bash: /home/work/dcvc/miniconda3/envs/dcvc_rt_env_1/lib/libtinfo.so.6: no version information available (required by /bin/bash)
+4. This keeps the rest of the repo unchanged — entropy_models.py already imports RansEncoder/RansDecoder and pmf_to_quantized_cdf from MLCodec_extensions_cpp (so the import path is identical).
 
 
-If this still fails, please paste the import error + the ldd output above. Next options will be:
-  A) try a different libstdcxx-ng version (e.g. 15.2.0 or 14.x) via conda,
-  B) run the pipeline in Google Colab / another machine with modern GCC/CUDA, or
-  C) use the pure-PyTorch fallback (but you'll need a Python-only entropy coder path — more invasive).
+
+
+---
+
+Drop-in module (pure Python fallback)
+
+Create a file at src/MLCodec_extensions_cpp.py with this content:
+
+# src/MLCodec_extensions_cpp.py
+# Pure-Python fallback for MLCodec C++ extension (RANS encoder/decoder + pmf->cdf).
+# WARNING: this is NOT real RANS compression. It's a functional serializer for testing.
+# It preserves the Python API expected by entropy_models.py.
+
+import pickle
+import numpy as np
+
+
+def pmf_to_quantized_cdf(pmf, precision=16):
+    """
+    pmf: Python list or 1D sequence of probabilities summing (roughly) to 1.
+    precision: number of bits for fixed-point quantization (like 16).
+    Returns: a list (or numpy array) representing quantized CDF in integer form.
+    This mimics the shape returned by the C++ helper used by the repository.
+    """
+    # convert to numpy
+    pmf = np.asarray(pmf, dtype=np.float64)
+    # guard
+    pmf = pmf.clip(min=0.0)
+    s = pmf.sum()
+    if s <= 0:
+        # fallback to uniform small prob
+        pmf = np.ones_like(pmf, dtype=np.float64) / max(1, len(pmf))
+        s = pmf.sum()
+
+    # normalize
+    pmf = pmf / s
+
+    scale = 1 << precision
+    cdf = np.zeros(len(pmf) + 1, dtype=np.int32)
+    acc = 0
+    for i, p in enumerate(pmf):
+        acc += int(round(p * scale))
+        cdf[i + 1] = acc
+
+    # ensure final equals scale
+    cdf[-1] = scale
+    # make non-decreasing and fit in int32
+    cdf = np.maximum.accumulate(cdf).astype(np.int32)
+    return cdf
+
+
+class RansEncoder:
+    """
+    Minimal encoder that stores sequences of symbols (as numpy arrays).
+    Methods mirror exactly the API used by the repo's EntropyCoder.
+    This is not compression; it's a serializer for correctness tests.
+    """
+
+    def __init__(self):
+        self.reset()
+        self._use_two_encoders = False
+
+    def reset(self):
+        # store events in lists; we will pickle the lists into final stream
+        self._y_symbols = []
+        self._z_symbols = []
+        self._cdf_table = []
+        self._cdf_lengths = []
+        self._cdf_offsets = []
+        self._cdf_index_map = {}  # (tuple(cdf), length, offset) -> idx
+
+    def add_cdf(self, cdf, cdf_length, offset):
+        """
+        In C++: register cdf to encoder/decoder and return index.
+        Here: store and return an integer id (index).
+        cdf is expected to be a list or 1D array.
+        """
+        key = (tuple(int(x) for x in cdf), int(cdf_length), int(offset))
+        if key in self._cdf_index_map:
+            return self._cdf_index_map[key]
+        idx = len(self._cdf_table)
+        self._cdf_table.append(np.asarray(cdf, dtype=np.int32))
+        self._cdf_lengths.append(int(cdf_length))
+        self._cdf_offsets.append(int(offset))
+        self._cdf_index_map[key] = idx
+        return idx
+
+    def encode_y(self, symbols, cdf_group_index):
+        """
+        symbols: numpy array (int16) – same shape as passed in original code.
+        We just append the raw array (copy) and remember the group index for debugging if needed.
+        """
+        arr = np.asarray(symbols, dtype=np.int16).copy()
+        self._y_symbols.append((cdf_group_index, arr))
+
+    def encode_z(self, symbols, cdf_group_index, start_offset, per_channel_size):
+        """
+        symbols: numpy int8 array.
+        We'll store them as bytes; start_offset/per_channel_size are recorded for info.
+        """
+        arr = np.asarray(symbols, dtype=np.int8).copy()
+        self._z_symbols.append((cdf_group_index, int(start_offset), int(per_channel_size), arr))
+
+    def flush(self):
+        # nothing to do for this fall-back
+        pass
+
+    def get_encoded_stream(self):
+        """
+        Return a bytes object that contains the serialized lists.
+        We'll use pickle to store a dict; the decoder will unpickle it.
+        """
+        payload = {
+            "cdf_table": [x.tolist() for x in self._cdf_table],
+            "cdf_lengths": list(self._cdf_lengths),
+            "cdf_offsets": list(self._cdf_offsets),
+            "y_symbols": [(idx, arr.tolist()) for idx, arr in self._y_symbols],
+            "z_symbols": [(idx, off, per, arr.tolist()) for (idx, off, per, arr) in self._z_symbols],
+            # store a small header so decoder can be compatible
+            "meta": {"use_two_encoders": self._use_two_encoders}
+        }
+        return pickle.dumps(payload)
+
+    def set_use_two_encoders(self, use_two):
+        self._use_two_encoders = bool(use_two)
+
+
+class RansDecoder:
+    """
+    Minimal decoder that reverses RansEncoder above.
+    It expects the pickled format generated by RansEncoder.get_encoded_stream().
+    """
+
+    def __init__(self):
+        self.reset()
+        self._use_two_decoders = False
+
+    def reset(self):
+        self._payload = None
+        self._y_index = 0
+        self._z_index = 0
+        self._decoded_y_buffers = []
+        self._decoded_z_buffers = []
+
+    def add_cdf(self, cdf, cdf_length, offset):
+        # for compatibility; store but don't use
+        # return index consistent with encoder if available (not strictly necessary)
+        return 0
+
+    def set_stream(self, stream_bytes):
+        """
+        stream_bytes: sequence of uint8 bytes or bytes object produced by RansEncoder.get_encoded_stream()
+        We unpickle and store internal lists for decode calls.
+        """
+        if isinstance(stream_bytes, (bytes, bytearray)):
+            data = pickle.loads(stream_bytes)
+        else:
+            # may be a numpy array of uint8
+            try:
+                data = pickle.loads(bytes(stream_bytes))
+            except Exception:
+                raise ValueError("Unsupported stream type for set_stream")
+
+        self._payload = data
+        # prepare lists
+        self._y_list = [np.asarray(a, dtype=np.int16) for (_idx, a) in data.get("y_symbols", [])]
+        self._z_list = [np.asarray(a, dtype=np.int8) for (_idx, _off, _per, a) in data.get("z_symbols", [])]
+        self._y_index = 0
+        self._z_index = 0
+
+    def decode_y(self, indexes, cdf_group_index):
+        """
+        In the real decoder, this uses 'indexes' to pick which CDF to use to decode RANS stream.
+        Here we only pop the next stored y-array and pretend we decoded exactly that many values.
+        indexes is a numpy array of uint8 telling expected length; we ignore it except for sanity checks.
+        """
+        if self._payload is None:
+            raise RuntimeError("No stream set in decoder (call set_stream first).")
+        if self._y_index >= len(self._y_list):
+            # no more y to decode — produce nothing
+            self._last_decoded_y = np.zeros(0, dtype=np.int16)
+            return
+        self._last_decoded_y = self._y_list[self._y_index]
+        self._y_index += 1
+
+    def decode_and_get_y(self, indexes, cdf_group_index):
+        # compatibility wrapper: return a python list/ndarray of decoded symbols
+        self.decode_y(indexes, cdf_group_index)
+        return self._last_decoded_y.tolist()
+
+    def decode_z(self, total_size, cdf_group_index, start_offset, per_channel_size):
+        """
+        Pop/consume all z blocks. In real decoder, parameters are used to split channel-wise.
+        Here we just build a full int8 numpy array of expected length.
+        """
+        if self._payload is None:
+            raise RuntimeError("No stream set in decoder (call set_stream first).")
+        # accumulate all remaining z arrays
+        if self._z_index >= len(self._z_list):
+            self._last_decoded_z = np.zeros(0, dtype=np.int8)
+            return
+        self._last_decoded_z = self._z_list[self._z_index]
+        self._z_index += 1
+
+    def get_decoded_tensor(self):
+        """
+        Return last decoded z or y as flat numpy array (this aligns with how
+        EntropyCoder.get_decoded_tensor is used). We'll return the last z buffer if present,
+        otherwise last y buffer.
+        """
+        # prefer z over y if present (used for z decoding in repo)
+        if hasattr(self, "_last_decoded_z") and self._last_decoded_z is not None and self._last_decoded_z.size > 0:
+            return np.asarray(self._last_decoded_z, dtype=np.int8)
+        if hasattr(self, "_last_decoded_y") and self._last_decoded_y is not None and self._last_decoded_y.size > 0:
+            return np.asarray(self._last_decoded_y, dtype=np.int16)
+        # fallback empty
+        return np.zeros(0, dtype=np.int8)
+
+    def get_decoded_stream(self):
+        # convenience if used anywhere
+        return self._payload
+
+    def set_use_two_decoders(self, use_two):
+        self._use_two_decoders = bool(use_two)
+
+Where to place the file
+
+Put MLCodec_extensions_cpp.py in src/ (same directory where src/models and src/utils live), or in your project root if src is already a package root. The existing import in entropy_models.py is:
+
+
+from MLCodec_extensions_cpp import RansEncoder, RansDecoder
+
+so the module must be importable with that name. Placing the file inside src/ and ensuring PYTHONPATH includes src is the easiest approach.
+
+
+---
+
+Why this works with the repo as-is
+
+EntropyCoder in src/models/entropy_models.py imports RansEncoder and RansDecoder and calls a limited set of methods:
+
+RansEncoder.reset(), add_cdf(...), encode_y(...), encode_z(...), flush(), get_encoded_stream(), set_use_two_encoders().
+
+RansDecoder.add_cdf(...), set_stream(...), decode_y(...), decode_and_get_y(...), decode_z(...), get_decoded_tensor(), set_use_two_decoders().
+
+
+The fallback module preserves those methods and shapes so the Python flow (encoding/decoding call order) works unchanged — only the stream contents and sizes differ (no actual compression).
+
+
+
+---
+
+Additional notes / improvements
+
+The fallback stores full symbol arrays (no compression). If you want a small but real compression without C++/CUDA, you could:
+
+Replace the raw pickle with numpy.savez_compressed(...) to reduce size using zlib (much slower but compressed).
+
+Implement a simple arithmetic coder or use an existing pure-Python library (if allowed) — that requires adapting code to CDFs and the repo’s indexing scheme.
+
+
+If you need pmf_to_quantized_cdf to match the C++ behavior more closely (offsets, tail mass handling, specific layout), we can refine that function. The provided implementation quantizes pmf into a monotonic integer CDF using the precision parameter; it’s sufficient for the repo’s BitEstimator.update() to create quantized tables.
+
+If you prefer the fallback module to live under a different name, change the import in src/models/entropy_models.py. But placing the module with the same name is the least invasive approach.
+
+
+
+---
+
+Quick test checklist
+
+1. Put src/MLCodec_extensions_cpp.py into your codebase (as above).
+
+
+2. Ensure Python can import it: start Python from project root where src is on PYTHONPATH or run your script from repo root if src is a package directory.
+
+
+3. Run a small encode/decode script (or test_video.py with a very short sequence / single frame) — it should run without any C++ build step.
+
+
+4. Expect bitstream sizes to be much larger (no real compression), but validation (PSNR, reconstructed tensors) should match because we serialize true symbol values.
+
+
+
+
+---
+
+If you want, I can:
+
+produce a version that uses numpy.savez_compressed instead of pickle to reduce serialized size (slower),
+
+implement a simple arithmetic coder fallback (more code, slower, but some compression),
+
+or prepare a tiny patch to entropy_models.py to try importing the C++ extension and otherwise fall back (already done by your code in other parts, but I can add a robust try/except there too).
+
+
+Which of those would you prefer?
+
