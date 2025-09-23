@@ -1,7 +1,32 @@
-import runpy
-import sys
+Nice — you’re almost there. The runpy.run_path(...) call executed the script and returned its globals (that blob you pasted). The script printed cannot import cuda implementation for inference, fallback to pytorch. (that’s OK — it will use the Python fallback implementation), but it did not actually run the script’s main() (the top-level run used runpy.run_path which executed top-level code, but in this repo test_video.py mostly defines functions and main() — you need to call it).
 
-# Simulate command line args
+Below are two ready-to-run notebook cells you can paste into your IPYNB.
+
+1. The first cell ensures the repo root is on sys.path and then runs main() from test_video.py with your command-line args (same args you used earlier). This will execute the full test script inside the notebook and stream output into the cell.
+
+
+2. The second cell is optional: it attempts to compile the CUDA inference extension in-place (so you get the faster native implementation). Only run it if you have a working CUDA toolchain (nvcc) and development headers — otherwise the build will fail and you can keep using the PyTorch fallback.
+
+
+
+
+---
+
+Cell A — run test_video.py main() inside the notebook
+
+# Cell A: run test_video.py.main() with argv
+import sys
+from pathlib import Path
+import runpy
+import importlib.util
+
+# 1) point to your repo root (change if different)
+repo_root = Path("/home/work/dcvc/dcvc_try_p").resolve()
+if str(repo_root) not in sys.path:
+    sys.path.insert(0, str(repo_root))
+print("repo_root on sys.path:", repo_root)
+
+# 2) set command-line args (same as before)
 sys.argv = [
     "test_video.py",
     "--model_path_i", "./checkpoints/cvpr2025_image.pth.tar",
@@ -20,235 +45,66 @@ sys.argv = [
     "--verbose", "0",
 ]
 
-runpy.run_path("test_video.py")
+# 3) load the module namespace from the file
+module_globals = runpy.run_path(str(repo_root / "test_video.py"))
+
+# 4) fetch main and run it
+if "main" in module_globals and callable(module_globals["main"]):
+    print("Calling test_video.main() now — output will appear below.")
+    # call main and capture exit
+    try:
+        module_globals["main"]()
+    except SystemExit as e:
+        print("test_video exited with SystemExit:", e)
+    except Exception as e:
+        print("test_video raised an exception:", repr(e))
+else:
+    raise RuntimeError("test_video.py did not expose a callable 'main()' in the top-level namespace.")
+
+Notes:
+
+This runs the script in-process (not via a subprocess). If the script calls os._exit() or does aggressive process management the notebook kernel could be affected.
+
+If you prefer launching a subprocess (safer isolation), replace steps 3–4 with a subprocess.run([...]) call — I can provide that if you prefer.
 
 
 
-cannot import cuda implementation for inference, fallback to pytorch.
-{'__name__': '<run_path>',
- '__doc__': None,
- '__package__': '',
- '__loader__': None,
- '__spec__': None,
- '__file__': 'test_video.py',
- '__cached__': None,
- '__builtins__': {'__name__': 'builtins',
-  '__doc__': "Built-in functions, types, exceptions, and other objects.\n\nThis module provides direct access to all 'built-in'\nidentifiers of Python; for example, builtins.len is\nthe full name for the built-in function len().\n\nThis module is not normally accessed explicitly by most\napplications, but can be useful in modules that provide\nobjects with the same name as a built-in value, but in\nwhich the built-in of that name is also needed.",
-  '__package__': '',
-  '__loader__': _frozen_importlib.BuiltinImporter,
-  '__spec__': ModuleSpec(name='builtins', loader=<class '_frozen_importlib.BuiltinImporter'>, origin='built-in'),
-  '__build_class__': <function __build_class__>,
-  '__import__': <function __import__(name, globals=None, locals=None, fromlist=(), level=0)>,
-  'abs': <function abs(x, /)>,
-  'all': <function all(iterable, /)>,
-  'any': <function any(iterable, /)>,
-  'ascii': <function ascii(obj, /)>,
-  'bin': <function bin(number, /)>,
-  'breakpoint': <function breakpoint>,
-  'callable': <function callable(obj, /)>,
-  'chr': <function chr(i, /)>,
-  'compile': <function compile(source, filename, mode, flags=0, dont_inherit=False, optimize=-1, *, _feature_version=-1)>,
-  'delattr': <function delattr(obj, name, /)>,
-  'dir': <function dir>,
-  'divmod': <function divmod(x, y, /)>,
-  'eval': <function eval(source, globals=None, locals=None, /)>,
-  'exec': <function exec(source, globals=None, locals=None, /, *, closure=None)>,
-  'format': <function format(value, format_spec='', /)>,
-  'getattr': <function getattr>,
-  'globals': <function globals()>,
-  'hasattr': <function hasattr(obj, name, /)>,
-  'hash': <function hash(obj, /)>,
-  'hex': <function hex(number, /)>,
-  'id': <function id(obj, /)>,
-  'input': <bound method Kernel.raw_input of <ipykernel.ipkernel.IPythonKernel object at 0x7f278fa10f50>>,
-  'isinstance': <function isinstance(obj, class_or_tuple, /)>,
-  'issubclass': <function issubclass(cls, class_or_tuple, /)>,
-  'iter': <function iter>,
-  'aiter': <function aiter(async_iterable, /)>,
-  'len': <function len(obj, /)>,
-  'locals': <function locals()>,
-  'max': <function max>,
-  'min': <function min>,
-  'next': <function next>,
-  'anext': <function anext>,
-  'oct': <function oct(number, /)>,
-  'ord': <function ord(c, /)>,
-  'pow': <function pow(base, exp, mod=None)>,
-  'print': <function print(*args, sep=' ', end='\n', file=None, flush=False)>,
-  'repr': <function repr(obj, /)>,
-  'round': <function round(number, ndigits=None)>,
-  'setattr': <function setattr(obj, name, value, /)>,
-  'sorted': <function sorted(iterable, /, *, key=None, reverse=False)>,
-  'sum': <function sum(iterable, /, start=0)>,
-  'vars': <function vars>,
-  'None': None,
-  'Ellipsis': Ellipsis,
-  'NotImplemented': NotImplemented,
-  'False': False,
-  'True': True,
-  'bool': bool,
-  'memoryview': memoryview,
-  'bytearray': bytearray,
-  'bytes': bytes,
-  'classmethod': classmethod,
-  'complex': complex,
-  'dict': dict,
-  'enumerate': enumerate,
-  'filter': filter,
-  'float': float,
-  'frozenset': frozenset,
-  'property': property,
-  'int': int,
-  'list': list,
-  'map': map,
-  'object': object,
-  'range': range,
-  'reversed': reversed,
-  'set': set,
-  'slice': slice,
-  'staticmethod': staticmethod,
-  'str': str,
-  'super': super,
-  'tuple': tuple,
-  'type': type,
-  'zip': zip,
-  '__debug__': True,
-  'BaseException': BaseException,
-  'BaseExceptionGroup': BaseExceptionGroup,
-  'Exception': Exception,
-  'GeneratorExit': GeneratorExit,
-  'KeyboardInterrupt': KeyboardInterrupt,
-  'SystemExit': SystemExit,
-  'ArithmeticError': ArithmeticError,
-  'AssertionError': AssertionError,
-  'AttributeError': AttributeError,
-  'BufferError': BufferError,
-  'EOFError': EOFError,
-  'ImportError': ImportError,
-  'LookupError': LookupError,
-  'MemoryError': MemoryError,
-  'NameError': NameError,
-  'OSError': OSError,
-  'ReferenceError': ReferenceError,
-  'RuntimeError': RuntimeError,
-  'StopAsyncIteration': StopAsyncIteration,
-  'StopIteration': StopIteration,
-  'SyntaxError': SyntaxError,
-  'SystemError': SystemError,
-  'TypeError': TypeError,
-  'ValueError': ValueError,
-  'Warning': Warning,
-  'FloatingPointError': FloatingPointError,
-  'OverflowError': OverflowError,
-  'ZeroDivisionError': ZeroDivisionError,
-  'BytesWarning': BytesWarning,
-  'DeprecationWarning': DeprecationWarning,
-  'EncodingWarning': EncodingWarning,
-  'FutureWarning': FutureWarning,
-  'ImportWarning': ImportWarning,
-  'PendingDeprecationWarning': PendingDeprecationWarning,
-  'ResourceWarning': ResourceWarning,
-  'RuntimeWarning': RuntimeWarning,
-  'SyntaxWarning': SyntaxWarning,
-  'UnicodeWarning': UnicodeWarning,
-  'UserWarning': UserWarning,
-  'BlockingIOError': BlockingIOError,
-  'ChildProcessError': ChildProcessError,
-  'ConnectionError': ConnectionError,
-  'FileExistsError': FileExistsError,
-  'FileNotFoundError': FileNotFoundError,
-  'InterruptedError': InterruptedError,
-  'IsADirectoryError': IsADirectoryError,
-  'NotADirectoryError': NotADirectoryError,
-  'PermissionError': PermissionError,
-  'ProcessLookupError': ProcessLookupError,
-  'TimeoutError': TimeoutError,
-  'IndentationError': IndentationError,
-  'IndexError': IndexError,
-  'KeyError': KeyError,
-  'ModuleNotFoundError': ModuleNotFoundError,
-  'NotImplementedError': NotImplementedError,
-  'RecursionError': RecursionError,
-  'UnboundLocalError': UnboundLocalError,
-  'UnicodeError': UnicodeError,
-  'BrokenPipeError': BrokenPipeError,
-  'ConnectionAbortedError': ConnectionAbortedError,
-  'ConnectionRefusedError': ConnectionRefusedError,
-  'ConnectionResetError': ConnectionResetError,
-  'TabError': TabError,
-  'UnicodeDecodeError': UnicodeDecodeError,
-  'UnicodeEncodeError': UnicodeEncodeError,
-  'UnicodeTranslateError': UnicodeTranslateError,
-  'ExceptionGroup': ExceptionGroup,
-  'EnvironmentError': OSError,
-  'IOError': OSError,
-  'open': <function _io.open(file, mode='r', buffering=-1, encoding=None, errors=None, newline=None, closefd=True, opener=None)>,
-  'copyright': Copyright (c) 2001-2023 Python Software Foundation.
-  All Rights Reserved.
-  
-  Copyright (c) 2000 BeOpen.com.
-  All Rights Reserved.
-  
-  Copyright (c) 1995-2001 Corporation for National Research Initiatives.
-  All Rights Reserved.
-  
-  Copyright (c) 1991-1995 Stichting Mathematisch Centrum, Amsterdam.
-  All Rights Reserved.,
-  'credits':     Thanks to CWI, CNRI, BeOpen, Zope Corporation, the Python Software
-      Foundation, and a cast of thousands for supporting Python
-      development.  See www.python.org for more information.,
-  'license': Type license() to see the full license text,
-  'help': Type help() for interactive help, or help(object) for help about object.,
-  'execfile': <function _pydev_bundle._pydev_execfile.execfile(file, glob=None, loc=None)>,
-  'runfile': <function _pydev_bundle.pydev_umd.runfile(filename, args=None, wdir=None, namespace=None)>,
-  '__IPYTHON__': True,
-  'display': <function IPython.core.display_functions.display(*objs, include=None, exclude=None, metadata=None, transient=None, display_id=None, raw=False, clear=False, **kwargs)>,
-  'get_ipython': <bound method InteractiveShell.get_ipython of <ipykernel.zmqshell.ZMQInteractiveShell object at 0x7f278f99a600>>},
- 'argparse': <module 'argparse' from '/home/work/dcvc/miniconda3/envs/dcvc_rt_env_1/lib/python3.12/argparse.py'>,
- 'concurrent': <module 'concurrent' from '/home/work/dcvc/miniconda3/envs/dcvc_rt_env_1/lib/python3.12/concurrent/__init__.py'>,
- 'io': <module 'io' from '/home/work/dcvc/miniconda3/envs/dcvc_rt_env_1/lib/python3.12/io.py'>,
- 'json': <module 'json' from '/home/work/dcvc/miniconda3/envs/dcvc_rt_env_1/lib/python3.12/json/__init__.py'>,
- 'multiprocessing': <module 'multiprocessing' from '/home/work/dcvc/miniconda3/envs/dcvc_rt_env_1/lib/python3.12/multiprocessing/__init__.py'>,
- 'os': <module 'os' from '/home/work/dcvc/miniconda3/envs/dcvc_rt_env_1/lib/python3.12/os.py'>,
- 'time': <module 'time' (built-in)>,
- 'torch': <module 'torch' from '/home/work/dcvc/miniconda3/envs/dcvc_rt_env_1/lib/python3.12/site-packages/torch/__init__.py'>,
- 'np': <module 'numpy' from '/home/work/dcvc/miniconda3/envs/dcvc_rt_env_1/lib/python3.12/site-packages/numpy/__init__.py'>,
- 'tqdm': tqdm.std.tqdm,
- 'replicate_pad': <function src.layers.cuda_inference.replicate_pad(x, pad_b, pad_r)>,
- 'DMC': src.models.video_model.DMC,
- 'DMCI': src.models.image_model.DMCI,
- 'str2bool': <function src.utils.common.str2bool(v)>,
- 'create_folder': <function src.utils.common.create_folder(path, print_if_create=False)>,
- 'generate_log_json': <function src.utils.common.generate_log_json(frame_num, frame_pixel_num, test_time, frame_types, bits, psnrs, ssims, verbose=False, avg_encoding_time=None, avg_decoding_time=None)>,
- 'get_state_dict': <function src.utils.common.get_state_dict(ckpt_path)>,
- 'dump_json': <function src.utils.common.dump_json(obj, fid, float_digits=-1, **kwargs)>,
- 'set_torch_env': <function src.utils.common.set_torch_env()>,
- 'SPSHelper': src.utils.stream_helper.SPSHelper,
- 'NalType': <enum 'NalType'>,
- 'write_sps': <function src.utils.stream_helper.write_sps(f, sps)>,
- 'read_header': <function src.utils.stream_helper.read_header(f)>,
- 'read_sps_remaining': <function src.utils.stream_helper.read_sps_remaining(f, sps_id)>,
- 'read_ip_remaining': <function src.utils.stream_helper.read_ip_remaining(f)>,
- 'write_ip': <function src.utils.stream_helper.write_ip(f, is_i_frame, sps_id, qp, bit_stream)>,
- 'PNGReader': src.utils.video_reader.PNGReader,
- 'YUV420Reader': src.utils.video_reader.YUV420Reader,
- 'PNGWriter': src.utils.video_writer.PNGWriter,
- 'YUV420Writer': src.utils.video_writer.YUV420Writer,
- 'calc_psnr': <function src.utils.metrics.calc_psnr(img1, img2, data_range=255)>,
- 'calc_msssim': <function src.utils.metrics.calc_msssim(img1, img2, data_range=255)>,
- 'calc_msssim_rgb': <function src.utils.metrics.calc_msssim_rgb(img1, img2, data_range=255)>,
- 'rgb2ycbcr': <function src.utils.transforms.rgb2ycbcr(rgb, is_bgr=False)>,
- 'ycbcr2rgb': <function src.utils.transforms.ycbcr2rgb(ycbcr, is_bgr=False, clamp=True)>,
- 'yuv_444_to_420': <function src.utils.transforms.yuv_444_to_420(yuv)>,
- 'ycbcr420_to_444_np': <function src.utils.transforms.ycbcr420_to_444_np(y, uv, order=0, separate=False)>,
- 'parse_args': <function <run_path>.parse_args()>,
- 'np_image_to_tensor': <function <run_path>.np_image_to_tensor(img, device)>,
- 'get_src_reader': <function <run_path>.get_src_reader(args)>,
- 'get_src_frame': <function <run_path>.get_src_frame(args, src_reader, device)>,
- 'get_distortion': <function <run_path>.get_distortion(args, x_hat, y, u, v, rgb)>,
- 'run_one_point_with_stream': <function <run_path>.run_one_point_with_stream(p_frame_net, i_frame_net, args)>,
- 'i_frame_net': None,
- 'p_frame_net': None,
- 'worker': <function <run_path>.worker(args)>,
- 'init_func': <function <run_path>.init_func(args, gpu_num)>,
- 'main': <function <run_path>.main()>}
+---
+
+Cell B (optional) — try compiling the CUDA extension (build in-place)
+
+# Cell B: (optional) try to compile the CUDA inference extension in-place.
+# Run this only if you have CUDA toolkit installed and a compatible compiler.
+import subprocess, sys, os
+from pathlib import Path
+
+repo_root = Path("/home/work/dcvc/dcvc_try_p").resolve()
+ext_dir = repo_root / "src" / "layers" / "extensions" / "inference"
+
+if not ext_dir.exists():
+    print("Extension directory not found:", ext_dir)
+else:
+    print("Building extension in:", ext_dir)
+    # run python setup.py build_ext --inplace
+    cmd = [sys.executable, "setup.py", "build_ext", "--inplace"]
+    proc = subprocess.run(cmd, cwd=str(ext_dir), capture_output=True, text=True)
+    print("returncode:", proc.returncode)
+    print("stdout:\n", proc.stdout[:1000])
+    print("stderr:\n", proc.stderr[:2000])
+    if proc.returncode == 0:
+        print("Build successful. Re-run Cell A to attempt loading the CUDA implementation.")
+    else:
+        print("Build failed. Check stderr above. You can continue using the PyTorch fallback.")
+
+What to expect:
+
+If compilation succeeds, the repository will produce a compiled shared object (e.g., .so) in the extension folder and the message cannot import cuda implementation... fallback should disappear next time you run the script (it will use the compiled native extension).
+
+If compilation fails, the script will continue to use the Python fallback (which you already ran).
+
+
+
+---
+
+If you want, tell me whether you prefer to run the script in-process (Cell A) or spawn a subprocess for full isolation. If you want the subprocess option I’ll paste that replacement cell (it’s safer for long-running tasks).
+
