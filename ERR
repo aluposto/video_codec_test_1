@@ -1,18 +1,14 @@
-# Cell A: run test_video.py.main() with argv
-import sys
+# Run test_video.py as a subprocess (recommended — avoids multiprocessing pickling errors)
+import subprocess, sys, os
 from pathlib import Path
-import runpy
-import importlib.util
 
-# 1) point to your repo root (change if different)
 repo_root = Path("/home/work/dcvc/dcvc_try_p").resolve()
-if str(repo_root) not in sys.path:
-    sys.path.insert(0, str(repo_root))
-print("repo_root on sys.path:", repo_root)
+# ensure the subprocess sees repo_root on PYTHONPATH
+env = os.environ.copy()
+env["PYTHONPATH"] = str(repo_root) + (":" + env.get("PYTHONPATH", "")) if env.get("PYTHONPATH") else str(repo_root)
 
-# 2) set command-line args (same as before)
-sys.argv = [
-    "test_video.py",
+cmd = [
+    sys.executable, str(repo_root / "test_video.py"),
     "--model_path_i", "./checkpoints/cvpr2025_image.pth.tar",
     "--model_path_p", "./checkpoints/cvpr2025_video.pth.tar",
     "--rate_num", "4",
@@ -29,25 +25,18 @@ sys.argv = [
     "--verbose", "0",
 ]
 
-# 3) load the module namespace from the file
-module_globals = runpy.run_path(str(repo_root / "test_video.py"))
+print("Running:", " ".join(cmd))
+proc = subprocess.Popen(cmd, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
 
-# 4) fetch main and run it
-if "main" in module_globals and callable(module_globals["main"]):
-    print("Calling test_video.main() now — output will appear below.")
-    # call main and capture exit
-    try:
-        module_globals["main"]()
-    except SystemExit as e:
-        print("test_video exited with SystemExit:", e)
-    except Exception as e:
-        print("test_video raised an exception:", repr(e))
-else:
-    raise RuntimeError("test_video.py did not expose a callable 'main()' in the top-level namespace.")
-
-
-
-repo_root on sys.path: /home/work/dcvc/dcvc_try_p
-Calling test_video.main() now — output will appear below.
-testing 4 rates, using qp: 0, 21, 42, 63, 
-test_video raised an exception: PicklingError("Can't pickle <function init_func at 0x7f263b1c36a0>: import of module '<run_path>' failed")
+# Stream output live to notebook
+try:
+    for line in proc.stdout:
+        print(line, end="")   # already contains newline
+except KeyboardInterrupt:
+    proc.terminate()
+    proc.wait()
+    print("\nSubprocess terminated by user.")
+finally:
+    proc.stdout.close()
+    rc = proc.wait()
+    print(f"\nSubprocess finished with return code: {rc}")
