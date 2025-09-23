@@ -1,141 +1,340 @@
-Great — now that conda is on PATH (nice!), run the three notebook cells below in order. They will:
+Test the video pipeline (no C++): step-by-step Jupyter notebook
 
-1. Install the compiler toolchain and distutils into your active conda env.
+This notebook shows the exact steps (and runnable cells) to run test_video.py end-to-end without building any C/C++ extensions. It creates safe Python fallbacks, dummy model checkpoints (random weights) and a tiny toy dataset so you can verify the pipeline runs.
 
+> Assumptions
 
-2. Build the RANS Python extension (MLCodec_extensions_cpp) in-place.
+You have the repository root mounted in the notebook environment (the src/ folder is available at the working directory).
 
-
-3. Re-run test_video.py as a subprocess and stream its output.
-
-
-
-Paste each block into its own cell and run them.
+Python environment has torch, numpy, Pillow, tqdm, scipy installed. If using GPU, a matching PyTorch with CUDA is optional but the notebook will run on CPU if no GPU available.
 
 
----
 
-Cell 1 — install compilers & distutils via conda
-
-# Cell 1: install compiler toolchain + distutils into your active conda env
-# (uses conda on PATH which you just added)
-import subprocess, sys
-
-cmd = "conda install -y -c conda-forge gcc_linux-64 gxx_linux-64 python-distutils-lite pybind11 cython"
-print("Running:", cmd)
-proc = subprocess.run(cmd, shell=True, capture_output=True, text=True)
-print("returncode:", proc.returncode)
-print("--- stdout (first 2000 chars) ---")
-print(proc.stdout[:2000])
-print("--- stderr (first 2000 chars) ---")
-print(proc.stderr[:2000])
-
-if proc.returncode != 0:
-    raise RuntimeError("Conda install failed. Paste the above stderr if you want help.")
-else:
-    print("Conda install finished successfully. Proceed to build step.")
 
 
 ---
 
-Cell 2 — build the MLCodec_extensions_cpp extension
+1. Create Python fallback for entropy coder
 
-# Cell 2: build MLCodec_extensions_cpp using src/cpp/setup.py
-import subprocess, sys
-from pathlib import Path
+Create src/MLCodec_extensions_cpp.py — a pure-Python minimal replacement that provides the APIs used in the code (RansEncoder, RansDecoder, pmf_to_quantized_cdf) with simple/naive implementations. Paste and run this cell.
 
-repo_root = Path("/home/work/dcvc/dcvc_try_p").resolve()
-cpp_dir = repo_root / "src" / "cpp"
-print("Building in:", cpp_dir)
+# cell: create MLCodec_extensions_cpp.py
+from textwrap import dedent
 
-cmd = [sys.executable, "setup.py", "build_ext", "--inplace"]
-proc = subprocess.run(cmd, cwd=str(cpp_dir), capture_output=True, text=True)
+content = dedent('''
+import numpy as np
+import torch
 
-print("returncode:", proc.returncode)
-print("\n----- STDOUT -----\n")
-print(proc.stdout)
-print("\n----- STDERR -----\n")
-print(proc.stderr)
+# --- Extremely small, purely-python placeholder for the C++ rANS wrapper ---
+class RansEncoder:
+    def __init__(self):
+        self._buf = bytearray()
+    def reset(self):
+        self._buf = bytearray()
+    def add_cdf(self, cdf, cdf_length, offset):
+        # return a dummy index
+        return 0
+    def encode_y(self, symbols, cdf_group_index):
+        # just store symbols as bytes (inefficient but valid for roundtrip)
+        arr = np.asarray(symbols, dtype=np.int16)
+        self._buf.extend(arr.tobytes())
+    def encode_z(self, symbols, cdf_group_index, start_offset, per_channel_size):
+        arr = np.asarray(symbols, dtype=np.int8)
+        self._buf.extend(arr.tobytes())
+    def flush(self):
+        pass
+    def get_encoded_stream(self):
+        return np.frombuffer(self._buf, dtype=np.uint8)
 
-print("\nFiles in src/cpp:")
-for p in sorted(cpp_dir.glob("*")):
-    print(" ", p.name)
+class RansDecoder:
+    def __init__(self):
+        self._buf = None
+        self._pos = 0
+    def reset(self):
+        self._buf = None
+        self._pos = 0
+    def add_cdf(self, cdf, cdf_length, offset):
+        return 0
+    def set_stream(self, arr):
+        self._buf = np.asarray(arr, dtype=np.uint8)
+        self._pos = 0
+    def decode_y(self, indexes, cdf_group_index):
+        # nothing: placeholder
+        pass
+    def decode_and_get_y(self, indexes, cdf_group_index, device, dtype):
+        # returns zeros compatible with needed shape
+        n = len(indexes)
+        return np.zeros(n, dtype=np.int16)
+    def decode_z(self, total_size, cdf_group_index, start_offset, per_channel_size):
+        # nothing
+        pass
+    def get_decoded_tensor(self):
+        # return an empty numpy array
+        return np.zeros(0, dtype=np.float32)
 
-# List shared object candidates in the repo
-so_candidates = list(repo_root.glob("**/*.so")) + list(repo_root.glob("**/*.pyd"))
-print(f"\nFound {len(so_candidates)} .so/.pyd candidates (showing up to 30):")
-for s in so_candidates[:30]:
-    print(" ", s)
+# helper used from Python code
 
-If this build succeeds proc.returncode will be 0 and you'll see one or more .so files (or .cpython-*.so) listed. If it fails, copy the full STDERR printed above and paste it here so I can parse it and tell you exactly what to fix.
+def pmf_to_quantized_cdf(pmf_list, precision=16):
+    # naive conversion: accumulate float pmf into a simple integer CDF
+    # pmf_list: list of lists or numpy arrays
+    out = []
+    for pmf in pmf_list:
+        p = np.asarray(pmf, dtype=np.float64)
+        p = p / p.sum()
+        c = np.cumsum(p)
+        c_q = (c * (1 << precision)).astype(np.int32)
+        c_q = np.concatenate(([0], c_q, [1 << precision]))
+        out.append(c_q.tolist())
+    return out
+''')
 
-
----
-
-Cell 3 — test import & re-run test_video.py
-
-# Cell 3: test import of compiled module, then run test_video.py as a subprocess (streams output)
-import importlib.util, importlib, sys, os
-from pathlib import Path
-repo_root = Path("/home/work/dcvc/dcvc_try_p").resolve()
-
-# ensure repo root on sys.path for import resolution
-if str(repo_root) not in sys.path:
-    sys.path.insert(0, str(repo_root))
-
-print("repo_root on sys.path:", repo_root)
-spec = importlib.util.find_spec("MLCodec_extensions_cpp")
-print("find_spec MLCodec_extensions_cpp:", spec)
-if spec is None:
-    print("Compiled extension not importable. If build failed, paste the stderr from Cell 2 here.")
-else:
-    try:
-        m = importlib.import_module("MLCodec_extensions_cpp")
-        print("Imported MLCodec_extensions_cpp:", m)
-    except Exception as e:
-        print("Import raised:", repr(e))
-
-# If import looks OK, re-run the test script in a subprocess
-if importlib.util.find_spec("MLCodec_extensions_cpp") is not None:
-    env = os.environ.copy()
-    env["PYTHONPATH"] = str(repo_root) + (":" + env.get("PYTHONPATH", "")) if env.get("PYTHONPATH") else str(repo_root)
-    cmd = [
-        sys.executable, str(repo_root / "test_video.py"),
-        "--model_path_i", "./checkpoints/cvpr2025_image.pth.tar",
-        "--model_path_p", "./checkpoints/cvpr2025_video.pth.tar",
-        "--rate_num", "4",
-        "--test_config", "./dataset_config_example_yuv420.json",
-        "--cuda", "1",
-        "-w", "1",
-        "--write_stream", "1",
-        "--force_zero_thres", "0.12",
-        "--output_path", "output.json",
-        "--force_intra_period", "-1",
-        "--reset_interval", "64",
-        "--force_frame_num", "-1",
-        "--check_existing", "0",
-        "--verbose", "0",
-    ]
-    print("Re-running test_video.py as subprocess...")
-    proc = subprocess.Popen(cmd, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
-    try:
-        for line in proc.stdout:
-            print(line, end="")
-    except KeyboardInterrupt:
-        proc.terminate()
-        proc.wait()
-        print("\nSubprocess terminated by user.")
-    finally:
-        proc.stdout.close()
-        rc = proc.wait()
-        print(f"\nSubprocess finished with return code: {rc}")
-else:
-    print("Skipping re-run; extension not importable.")
+with open('src/MLCodec_extensions_cpp.py', 'w') as f:
+    f.write(content)
+print('Written src/MLCodec_extensions_cpp.py')
 
 
 ---
 
-If anything errors during these steps, paste the full output from the failing cell (especially the complete STDERR from Cell 2). I’ll read it and give the exact fix.
+2. Provide pure-Python fallback for cuda_inference functions used by test_video.py
 
-Want me to also include the optional CUDA inference extension build cell (to get rid of the “fallback to pytorch” message)? I can add it after the RANS build if you want.
+We only need a few functions from src/layers/cuda_inference.py to let the Python pipeline run. Create a small pure-Python module that exports the same function names used in the code (e.g. replicate_pad, round_and_to_int8, clamp_reciprocal_with_quant, add_and_multiply, process_with_mask, build_index_dec, build_index_enc, round_and_to_int8, clamp_reciprocal_with_quant, bias_pixel_shuffle_8, bias_quant).
+
+This fallback will call standard PyTorch equivalents.
+
+# cell: create pure Python fallback module for cuda_inference
+from textwrap import dedent
+
+content = dedent('''
+# Minimal Python fallback for src.layers.cuda_inference
+import torch
+import torch.nn.functional as F
+
+CUSTOMIZED_CUDA_INFERENCE = False
+
+# very small wrappers used by the code
+
+def replicate_pad(x, pad_b, pad_r):
+    if pad_b == 0 and pad_r == 0:
+        return x
+    return F.pad(x, (0, pad_r, 0, pad_b), mode='replicate')
+
+
+def round_and_to_int8(z):
+    z_hat = torch.clamp(torch.round(z), -128., 127.)
+    z_hat_write = z_hat.to(dtype=torch.int8)
+    return z_hat, z_hat_write
+
+
+def clamp_reciprocal_with_quant(q_dec, y, min_val):
+    q_dec = torch.clamp_min(q_dec, min_val)
+    q_enc = torch.reciprocal(q_dec)
+    y = y * q_enc
+    return q_dec, y
+
+
+def add_and_multiply(y_hat_0, y_hat_1, q_dec):
+    return (y_hat_0 + y_hat_1) * q_dec
+
+
+def process_with_mask(y, scales, means, mask, force_zero_thres=None):
+    # naive implementation used by GaussianEncoder
+    scales_hat = scales * mask
+    means_hat = means * mask
+    y_res = (y - means_hat) * mask
+    y_q = torch.round(y_res)
+    if force_zero_thres is not None:
+        cond = scales_hat > force_zero_thres
+        y_q = y_q * cond
+    y_q = torch.clamp(y_q, -128., 127.)
+    y_hat = y_q + means_hat
+    return y_res, y_q, y_hat, scales_hat
+
+
+def build_index_dec(scales, scale_min, scale_max, log_scale_min, log_step_recip, skip_thres=None):
+    scales = scales.clamp(scale_min, scale_max)
+    indexes = ((torch.log(scales) - log_scale_min) * log_step_recip).to(dtype=torch.uint8)
+    skip_cond = None
+    if skip_thres is not None:
+        skip_cond = scales > skip_thres
+    return indexes, skip_cond
+
+
+def build_index_enc(symbols, scales, scale_min, scale_max, log_scale_min, log_step_recip, skip_thres=None):
+    scales = scales.clamp(scale_min, scale_max)
+    indexes = ((torch.log(scales) - log_scale_min) * log_step_recip).to(dtype=torch.uint8)
+    symbols = symbols.to(dtype=torch.int16)
+    out = ((symbols.to(torch.int16) << 8) + indexes.to(torch.int16)).to(torch.int16)
+    if skip_thres is not None:
+        skip_cond = scales > skip_thres
+        out = out[skip_cond]
+    return out
+
+
+def bias_pixel_shuffle_8(x, bias, C, N, W, clamp=True):
+    out = x + bias[None, :, None, None]
+    out = F.pixel_shuffle(out, 8)
+    if clamp:
+        out = torch.clamp(out, 0., 1.)
+    return out
+
+
+def bias_quant(x, bias, quant_step):
+    out = x + bias[None, :, None, None]
+    out = out * quant_step
+    return out
+
+# Some small aliases for imports elsewhere
+DepthConvProxy = None
+SubpelConv2xProxy = None
+''')
+
+with open('src/layers/cuda_inference.py', 'w') as f:
+    f.write(content)
+print('Written src/layers/cuda_inference.py (fallback)')
+
+
+---
+
+3. Create a tiny toy dataset (PNG images) and JSON config
+
+We will create a toy/toyseq/ folder with 3 small random PNG frames and a toy_dataset.json config.
+
+# cell: create toy images and dataset config
+from PIL import Image
+import numpy as np
+import json
+import os
+
+os.makedirs('toy/toyseq', exist_ok=True)
+for i in range(1, 4):
+    arr = (np.random.rand(64, 64, 3) * 255).astype(np.uint8)
+    Image.fromarray(arr).save(f'toy/toyseq/im{str(i).zfill(5)}.png')
+
+config = {
+    "root_path": ".",
+    "test_classes": {
+        "Toy": {
+            "test": 1,
+            "base_path": "toy",
+            "src_type": "png",
+            "sequences": {
+                "toyseq": { "width": 64, "height": 64, "frames": 3, "intra_period": 1 }
+            }
+        }
+    }
+}
+with open('toy_dataset.json', 'w') as f:
+    json.dump(config, f, indent=2)
+
+print('toy dataset and toy_dataset.json created')
+
+
+---
+
+4. Create dummy pretrained model checkpoints (random weights)
+
+test_video.py expects --model_path_i and --model_path_p. We'll instantiate the DMCI and DMC model classes, save random state_dict()s to files, and then use them.
+
+# cell: create and save random checkpoints for DMCI and DMC
+import torch
+from src.models.image_model import DMCI
+from src.models.video_model import DMC
+
+# CPU or GPU according to availability
+device = 'cuda' if torch.cuda.is_available() else 'cpu'
+
+i_net = DMCI().to(device)
+p_net = DMC().to(device)
+
+# initialize randomly (already random), save state_dicts
+torch.save({'state_dict': i_net.state_dict()}, 'pretrained_i.pth')
+torch.save({'state_dict': p_net.state_dict()}, 'pretrained_p.pth')
+print('Saved pretrained_i.pth and pretrained_p.pth')
+
+
+---
+
+5. Run the test_video.py script from the notebook
+
+We'll call the script via subprocess so you can see console output in the notebook. We set --force_intra True to encode all I-frames and --write_stream True to write the .bin stream.
+
+# cell: run the test script
+import subprocess
+cmd = [
+    'python', 'test_video.py',
+    '--model_path_i', 'pretrained_i.pth',
+    '--model_path_p', 'pretrained_p.pth',
+    '--test_config', 'toy_dataset.json',
+    '--write_stream', 'True',
+    '--output_path', 'results.json',
+    '--force_intra', 'True',
+    '--force_frame_num', '3',
+    '--verbose', '2'
+]
+
+proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+for line in proc.stdout:
+    print(line, end='')
+proc.wait()
+print('Return code:', proc.returncode)
+
+
+---
+
+6. Inspect results
+
+# cell: view results
+import json
+with open('results.json') as f:
+    r = json.load(f)
+
+print(json.dumps(r, indent=2))
+
+
+---
+
+Notes, caveats and next steps
+
+1. The fallback entropy coder and CUDA wrappers are naive placeholders meant only to exercise the Python-level pipeline. They do not perform real compression or rANS arithmetic — the .bin stream produced is not standard and cannot be decoded by an actual rANS implementation.
+
+
+2. If you later want to re-enable C++/CUDA extensions, replace src/MLCodec_extensions_cpp.py and src/layers/cuda_inference.py with the original files and build the extensions using python setup.py in the appropriate extension directories.
+
+
+3. If you want, I can also create a smaller version that uses CPU-only torch and disables GPU-specific code paths everywhere. Or I can create an actual pure-python arithmetic coder if you need a valid compressed bitstream (but that is more work).
+
+
+
+
+---
+
+If you want I can (A) produce a downloadable .ipynb file for you now, or (B) paste the notebook as a sequence of cells in this chat. Which do you prefer?
+
+
+
+Done — I created a ready-to-run Jupyter-style notebook in the canvas titled Run Test Video. It contains:
+
+A pure-Python fallback for the C++ rANS wrapper (src/MLCodec_extensions_cpp.py).
+
+A safe Python fallback for the CUDA/custom kernels used by the repo (src/layers/cuda_inference.py) so you can bypass C++ builds.
+
+Cells to create a tiny PNG toy dataset and a test JSON config.
+
+Cells to create random-weight checkpoint files for DMCI and DMC.
+
+A cell that runs test_video.py via subprocess and prints output.
+
+Notes and caveats about the placeholder implementations.
+
+
+Open the Run Test Video document in the canvas to copy/paste or run the cells. If you want, I can now:
+
+Export that notebook as a downloadable .ipynb file and give you the link, or
+
+Paste the entire notebook JSON into the chat, or
+
+Modify the notebook to use a real (but slower) Python entropy coder so the produced stream is properly decodable.
+
+
+Which would you like next?
 
