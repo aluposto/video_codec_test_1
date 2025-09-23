@@ -1,1 +1,80 @@
-dcvc/DCVC_fresh/media/data/UVG/Beauty_1920x1080_120fps_420_8bit_YUV.yuv
+Nice — this is a classic “python can’t see your src package” problem. You have the files, Python just isn’t looking in the right place (or src isn’t being treated like a package). Try these quick fixes (pick one) — each includes the exact command to run from your repo root (/home/work/dcvc/dcvc_try_p).
+
+1) Easiest: run with the repo root on PYTHONPATH
+
+This tells Python where to find the src package:
+
+cd /home/work/dcvc/dcvc_try_p
+PYTHONPATH=$(pwd) python test_video.py --model_path_i ./checkpoints/cvpr2025_image.pth.tar \
+  --model_path_p ./checkpoints/cvpr2025_video.pth.tar --rate_num 4 --test_config ./dataset_config_example_yuv420.json \
+  --cuda 1 -w 1 --write_stream 1 --force_zero_thres 0.12 --output_path output.json \
+  --force_intra_period -1 --reset_interval 64 --force_frame_num -1 --check_existing 0 --verbose 0
+
+Or export permanently for the shell session:
+
+export PYTHONPATH=$(pwd):$PYTHONPATH
+python test_video.py ...
+
+2) Run from the repo root (ensure current working directory is correct)
+
+If you run the command from another directory, Python may not find src. Confirm and run:
+
+cd /home/work/dcvc/dcvc_try_p
+python test_video.py ...
+
+3) (Robust) Install the package in editable mode
+
+If the repo has a setup.py/pyproject.toml you can install editable so imports always work:
+
+cd /home/work/dcvc/dcvc_try_p
+pip install -e .
+# then
+python test_video.py ...
+
+If there is no top-level setup.py, you could create a minimal one or use method (1).
+
+4) If imports still fail: make src a proper package
+
+If Python still can’t find src.layers, ensure src/ and its subfolders are importable. Add empty __init__.py files (only if needed):
+
+touch src/__init__.py
+touch src/layers/__init__.py
+touch src/models/__init__.py
+# etc. only for the top-level folders you're importing
+
+Then retry method (1) or (2).
+
+
+---
+
+Quick checks to debug
+
+Run these to see what Python sees (from repo root):
+
+# shows cwd and src contents
+pwd
+ls -la src
+
+# run small checks
+python - <<'PY'
+import sys, importlib
+print("cwd:", sys.path[0])
+print("sys.path sample:", sys.path[:5])
+print("find spec for 'src' ->", importlib.util.find_spec("src"))
+print("find spec for 'src.layers' ->", importlib.util.find_spec("src.layers"))
+PY
+
+If find_spec("src") prints None, Python can't locate the top-level src package — go back to methods (1) or (3).
+
+
+---
+
+Why this happened (short)
+
+test_video.py does import src.layers.cuda_inference. Python needs the parent directory of src on sys.path (usually the working directory). If you run from elsewhere or the repo isn’t installed/importable, you get ModuleNotFoundError.
+
+
+---
+
+If you want, tell me the output of the quick diagnostics above (the find_spec lines) and I’ll tell you which of the fixes is best for your environment. Or, if you prefer, I can suggest a one-line wrapper you can add to test_video.py that automatically adds the repo root to sys.path before imports. Which would you like?
+
