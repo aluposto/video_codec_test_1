@@ -1,60 +1,74 @@
-# Cell 1: install compiler toolchain + distutils into your active conda env
-# (uses conda on PATH which you just added)
-import subprocess, sys
+# Try to compile MLCodec_extensions_cpp manually (no setup.py / distutils)
+import sys, subprocess, os
+from pathlib import Path
+import sysconfig
+import pybind11
 
-cmd = "conda install -y -c conda-forge gcc_linux-64 gxx_linux-64 python-distutils-lite pybind11 cython"
-print("Running:", cmd)
-proc = subprocess.run(cmd, shell=True, capture_output=True, text=True)
-print("returncode:", proc.returncode)
-print("--- stdout (first 2000 chars) ---")
-print(proc.stdout[:2000])
-print("--- stderr (first 2000 chars) ---")
-print(proc.stderr[:2000])
+repo_root = Path("/home/work/dcvc/dcvc_try_p").resolve()
+py_rans_dir = repo_root / "src" / "cpp" / "py_rans"
+cpp_dir = repo_root / "src" / "cpp"
+out_name = "MLCodec_extensions_cpp.so"
+out_path = cpp_dir / out_name
 
-if proc.returncode != 0:
-    raise RuntimeError("Conda install failed. Paste the above stderr if you want help.")
+print("repo_root:", repo_root)
+print("py_rans_dir:", py_rans_dir)
+print("cpp_dir:", cpp_dir)
+
+# Source files we expect
+sources = []
+for fname in ["py_rans.cpp", "rans.cpp", "rans.cpp", "py_rans.cpp"]:
+    p = py_rans_dir / fname
+    if p.exists():
+        if str(p) not in sources:
+            sources.append(str(p))
+# Also include any other .cpp in py_rans_dir
+for p in py_rans_dir.glob("*.cpp"):
+    if str(p) not in sources:
+        sources.append(str(p))
+
+print("Found source files:", sources)
+
+# Get include paths
+py_inc = sysconfig.get_paths()["include"]
+pybind_inc = pybind11.get_include()
+extra_inc = str(py_rans_dir)
+
+print("Python include:", py_inc)
+print("pybind11 include:", pybind_inc)
+print("extra include (py_rans dir):", extra_inc)
+
+# Compiler & flags
+compiler = os.environ.get("CXX", "g++")
+cflags = "-O3 -std=c++14 -fPIC -shared -Wl,-O1 -Wl,--as-needed"
+include_flags = f"-I{py_inc} -I{pybind_inc} -I{extra_inc}"
+# Linker flags: none by default
+ldflags = ""
+
+cmd = f"{compiler} {cflags} {include_flags} {' '.join(sources)} -o {out_path} {ldflags}"
+print("\nCompile command:\n", cmd)
+
+# Run compile
+proc = subprocess.run(cmd, shell=True, cwd=str(cpp_dir), capture_output=True, text=True)
+print("\nReturn code:", proc.returncode)
+if proc.stdout:
+    print("\n--- COMPILER STDOUT ---\n", proc.stdout)
+if proc.stderr:
+    print("\n--- COMPILER STDERR ---\n", proc.stderr)
+
+# Show file if created
+if out_path.exists():
+    print("\nSUCCESS: created", out_path)
+    print("Attempting to import the built module...")
+    # ensure repo root on sys.path
+    if str(repo_root) not in sys.path:
+        sys.path.insert(0, str(repo_root))
+    try:
+        import importlib
+        m = importlib.import_module("MLCodec_extensions_cpp")
+        print("Imported MLCodec_extensions_cpp:", m)
+    except Exception as e:
+        print("Import failed:", repr(e))
 else:
-    print("Conda install finished successfully. Proceed to build step.")
-
-
-Running: conda install -y -c conda-forge gcc_linux-64 gxx_linux-64 python-distutils-lite pybind11 cython
-returncode: 1
---- stdout (first 2000 chars) ---
-Channels:
- - conda-forge
- - defaults
-Platform: linux-64
-Collecting package metadata (repodata.json): ...working... done
-Solving environment: ...working... failed
-
---- stderr (first 2000 chars) ---
-
-PackagesNotFoundError: The following packages are not available from current channels:
-
-  - python-distutils-lite
-
-Current channels:
-
-  - https://conda.anaconda.org/conda-forge
-  - https://repo.anaconda.com/pkgs/main
-  - https://repo.anaconda.com/pkgs/r
-
-To search for alternate channels that may provide the conda package you're
-looking for, navigate to
-
-    https://anaconda.org
-
-and use the search bar at the top of the page.
-
-
-
----------------------------------------------------------------------------
-RuntimeError                              Traceback (most recent call last)
-Cell In[32], line 15
-     12 print(proc.stderr[:2000])
-     14 if proc.returncode != 0:
----> 15     raise RuntimeError("Conda install failed. Paste the above stderr if you want help.")
-     16 else:
-     17     print("Conda install finished successfully. Proceed to build step.")
-
-RuntimeError: Conda install failed. Paste the above stderr if you want help.
+    print("\nBuild did not produce", out_name)
+    print("If errors indicate 'g++: not found' or 'Python.h: No such file or directory', you lack a compiler or Python dev headers in this environment.")
+    print("Paste the full STDERR above and I'll recommend the next step (conda install, admin request, or Colab).")
