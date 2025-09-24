@@ -1,4 +1,4 @@
-Cell: re-run test_video.py with CUDA_LAUNCH_BLOCKING=1 to get precise error location
+Cell 3: run test_video.py with PYTHONPATH set for the subprocess
 
 import os, sys, subprocess
 from pathlib import Path
@@ -7,8 +7,7 @@ repo_root = Path("/home/work/dcvc/DCVC_fresh").resolve()
 os.chdir(repo_root)
 
 env = os.environ.copy()
-env["PYTHONPATH"] = str(repo_root)
-env["CUDA_LAUNCH_BLOCKING"] = "1"
+env["PYTHONPATH"] = str(repo_root)   # ensures worker subprocesses can import src.*
 
 cmd = [
 sys.executable, "test_video.py",
@@ -16,12 +15,12 @@ sys.executable, "test_video.py",
 "--model_path_p", "./checkpoints/cvpr2025_video.pth.tar",
 "--rate_num", "4",
 "--test_config", "./dataset_config_example_yuv420.json",
-"--cuda", "1",
+"--cuda", "1",         # change to "0" if you don't have usable GPU
 "-w", "1",
 "--write_stream", "1",
-"--save_decoded_frame", "0",
+"--save_decoded_frame", "1",
 "--force_zero_thres", "0.12",
-"--output_path", "output_debug_cuda.json",
+"--output_path", "output.json",
 "--force_intra_period", "-1",
 "--reset_interval", "64",
 "--force_frame_num", "-1",
@@ -29,25 +28,16 @@ sys.executable, "test_video.py",
 "--verbose", "1",
 ]
 
-print("Running with CUDA_LAUNCH_BLOCKING=1 ... (may produce big trace)")
-proc = subprocess.run(cmd, cwd=str(repo_root), env=env, capture_output=True, text=True)
-print("Returncode:", proc.returncode)
-print("--- stdout (last 4000 chars) ---")
-print(proc.stdout[-4000:])
-print("--- stderr (last 4000 chars) ---")
-print(proc.stderr[-4000:])
+print("Running:", " ".join(cmd))
+proc = subprocess.run(cmd, cwd=str(repo_root), env=env)
+print("Return code:", proc.returncode)
 
-Running with CUDA_LAUNCH_BLOCKING=1 ... (may produce big trace)
-Returncode: 1
---- stdout (last 4000 chars) ---
+Running: /home/work/dcvc/miniconda3/envs/dcvc_rt_env/bin/python test_video.py --model_path_i ./checkpoints/cvpr2025_image.pth.tar --model_path_p ./checkpoints/cvpr2025_video.pth.tar --rate_num 4 --test_config ./dataset_config_example_yuv420.json --cuda 1 -w 1 --write_stream 1 --save_decoded_frame 1 --force_zero_thres 0.12 --output_path output.json --force_intra_period -1 --reset_interval 64 --force_frame_num -1 --check_existing 0 --verbose 1
 cannot import cuda implementation for inference, fallback to pytorch.
 testing 4 rates, using qp: 0, 21, 42, 63,
+0%|          | 0/212 [00:00<?, ?it/s]
 cannot import cuda implementation for inference, fallback to pytorch.
-
---- stderr (last 4000 chars) ---
-dex_size && "scatter gather kernel index out of bounds"failed.   /pytorch/aten/src/ATen/native/cuda/ScatterGatherKernel.cu:163: operator(): block: [472,0,0], thread: [85,0,0] Assertionidx_dim >= 0 && idx_dim < index_size && "scatter gather kernel index out of bounds"failed.   /pytorch/aten/src/ATen/native/cuda/ScatterGatherKernel.cu:163: operator(): block: [472,0,0], thread: [87,0,0] Assertionidx_dim >= 0 && idx_dim < index_size && "scatter gather kernel index out of bounds"failed.   /pytorch/aten/src/ATen/native/cuda/ScatterGatherKernel.cu:163: operator(): block: [472,0,0], thread: [89,0,0] Assertionidx_dim >= 0 && idx_dim < index_size && "scatter gather kernel index out of bounds"failed.   /pytorch/aten/src/ATen/native/cuda/ScatterGatherKernel.cu:163: operator(): block: [472,0,0], thread: [91,0,0] Assertionidx_dim >= 0 && idx_dim < index_size && "scatter gather kernel index out of bounds"failed.   /pytorch/aten/src/ATen/native/cuda/ScatterGatherKernel.cu:163: operator(): block: [472,0,0], thread: [93,0,0] Assertionidx_dim >= 0 && idx_dim < index_size && "scatter gather kernel index out of bounds"failed.   /pytorch/aten/src/ATen/native/cuda/ScatterGatherKernel.cu:163: operator(): block: [472,0,0], thread: [95,0,0] Assertionidx_dim >= 0 && idx_dim < index_size && "scatter gather kernel index out of bounds"` failed.
-
-0%|          | 0/212 [01:56<?, ?it/s]
+0%|          | 0/212 [00:12<?, ?it/s]
 concurrent.futures.process._RemoteTraceback:
 """
 Traceback (most recent call last):
@@ -57,24 +47,16 @@ r = call_item.fn(*call_item.args, **call_item.kwargs)
 File "/home/work/dcvc/DCVC_fresh/test_video.py", line 370, in worker
 result = run_one_point_with_stream(p_frame_net, i_frame_net, args)
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-File "/home/work/dcvc/DCVC_fresh/test_video.py", line 279, in run_one_point_with_stream
-decoded = i_frame_net.decompress(bit_stream, sps, qp)
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-File "/home/work/dcvc/DCVC_fresh/src/models/image_model.py", line 203, in decompress
-y_hat = self.decompress_prior_4x(params, self.y_spatial_prior_reduction,
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-File "/home/work/dcvc/DCVC_fresh/src/models/common_model.py", line 269, in decompress_prior_4x
-y_q_r = self.gaussian_encoder.decode_and_get_y(scales_r, dtype, device)
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-File "/home/work/dcvc/DCVC_fresh/src/models/entropy_models.py", line 325, in decode_and_get_y
-return self.get_y(scales.shape, scales.numel(), dtype, device, skip_cond, indexes)
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-File "/home/work/dcvc/DCVC_fresh/src/models/entropy_models.py", line 339, in get_y
-y = torch.index_select(val, 0, back_index) * skip_cond
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-torch.AcceleratorError: CUDA error: device-side assert triggered
-Compile with TORCH_USE_CUDA_DSA to enable device-side assertions.
-
+File "/home/work/dcvc/DCVC_fresh/test_video.py", line 192, in run_one_point_with_stream
+encoded = i_frame_net.compress(x_padded, args['qp_i'])
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+File "/home/work/dcvc/DCVC_fresh/src/models/image_model.py", line 178, in compress
+bit_stream = self.entropy_coder.get_encoded_stream()
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+File "/home/work/dcvc/DCVC_fresh/src/models/entropy_models.py", line 58, in get_encoded_stream
+return self.encoder.get_encoded_stream().tobytes()
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'bytes' object has no attribute 'tobytes'
 """
 
 The above exception was the direct cause of the following exception:
@@ -90,6 +72,6 @@ return self.__get_result()
 ^^^^^^^^^^^^^^^^^^^
 File "/home/work/dcvc/miniconda3/envs/dcvc_rt_env/lib/python3.12/concurrent/futures/_base.py", line 401, in __get_result
 raise self._exception
-torch.AcceleratorError: CUDA error: device-side assert triggered
-Compile with TORCH_USE_CUDA_DSA to enable device-side assertions.
+AttributeError: 'bytes' object has no attribute 'tobytes'
+Return code: 1
 
