@@ -1,89 +1,95 @@
-Nice — the native .so built successfully (return code 0) — great progress! The ModuleNotFoundError happens because Python can't find that .so file on sys.path. You compiled the module into /home/work/dcvc/dcvc_try_p/src/cpp/MLCodec_extensions_cpp.so, but your notebook's sys.path contains the repo root (/home/work/dcvc/dcvc_try_p) — not src/cpp. Python only searches directories listed in sys.path when importing a module by name.
+Cell: re-run test_video.py with CUDA_LAUNCH_BLOCKING=1 to get precise error location
 
-Two quick fixes (both safe). Run one of these notebook cells.
-
-Option 1 — add the src/cpp folder to sys.path (fast, temporary; recommended):
-
-import sys
+import os, sys, subprocess
 from pathlib import Path
 
-cpp_dir = str(Path("/home/work/dcvc/dcvc_try_p/src/cpp").resolve())
-if cpp_dir not in sys.path:
-    sys.path.insert(0, cpp_dir)
-print("Inserted into sys.path:", cpp_dir)
+repo_root = Path("/home/work/dcvc/DCVC_fresh").resolve()
+os.chdir(repo_root)
 
-# Try import
-import importlib
-try:
-    m = importlib.import_module("MLCodec_extensions_cpp")
-    print("Imported MLCodec_extensions_cpp:", m)
-except Exception as e:
-    print("Import failed:", repr(e))
-
-Option 2 — move the built shared object to the repo root so it's already on sys.path (persistent for this session):
-
-import shutil
-from pathlib import Path
-repo_root = Path("/home/work/dcvc/dcvc_try_p").resolve()
-cpp_dir = repo_root / "src" / "cpp"
-so = cpp_dir / "MLCodec_extensions_cpp.so"
-dst = repo_root / "MLCodec_extensions_cpp.so"
-print("Moving", so, "->", dst)
-shutil.copy2(so, dst)
-print("Copied. Now try importing:")
-
-import sys, importlib
-if str(repo_root) not in sys.path:
-    sys.path.insert(0, str(repo_root))
-try:
-    m = importlib.import_module("MLCodec_extensions_cpp")
-    print("Imported MLCodec_extensions_cpp:", m)
-except Exception as e:
-    print("Import failed:", repr(e))
-
-After import succeeds, re-run the test subprocess. Paste and run this cell next (it will stream output):
-
-# Re-run test_video.py as subprocess now that extension should be importable
-import subprocess, os, sys
-from pathlib import Path
-
-repo_root = Path("/home/work/dcvc/dcvc_try_p").resolve()
 env = os.environ.copy()
-env["PYTHONPATH"] = str(repo_root) + ":" + env.get("PYTHONPATH", "")
+env["PYTHONPATH"] = str(repo_root)
+env["CUDA_LAUNCH_BLOCKING"] = "1"
 
 cmd = [
-    sys.executable, str(repo_root / "test_video.py"),
-    "--model_path_i", "./checkpoints/cvpr2025_image.pth.tar",
-    "--model_path_p", "./checkpoints/cvpr2025_video.pth.tar",
-    "--rate_num", "4",
-    "--test_config", "./dataset_config_example_yuv420.json",
-    "--cuda", "1",
-    "-w", "1",
-    "--write_stream", "1",
-    "--force_zero_thres", "0.12",
-    "--output_path", "output.json",
-    "--force_intra_period", "-1",
-    "--reset_interval", "64",
-    "--force_frame_num", "-1",
-    "--check_existing", "0",
-    "--verbose", "0",
+sys.executable, "test_video.py",
+"--model_path_i", "./checkpoints/cvpr2025_image.pth.tar",
+"--model_path_p", "./checkpoints/cvpr2025_video.pth.tar",
+"--rate_num", "4",
+"--test_config", "./dataset_config_example_yuv420.json",
+"--cuda", "1",
+"-w", "1",
+"--write_stream", "1",
+"--save_decoded_frame", "0",
+"--force_zero_thres", "0.12",
+"--output_path", "output_debug_cuda.json",
+"--force_intra_period", "-1",
+"--reset_interval", "64",
+"--force_frame_num", "-1",
+"--check_existing", "0",
+"--verbose", "1",
 ]
 
-print("Running:", " ".join(cmd))
-proc = subprocess.Popen(cmd, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
-try:
-    for line in proc.stdout:
-        print(line, end="")
-except KeyboardInterrupt:
-    proc.terminate()
-    proc.wait()
-    print("\nSubprocess terminated by user.")
-finally:
-    proc.stdout.close()
-    rc = proc.wait()
-    print(f"\nSubprocess finished with return code: {rc}")
+print("Running with CUDA_LAUNCH_BLOCKING=1 ... (may produce big trace)")
+proc = subprocess.run(cmd, cwd=str(repo_root), env=env, capture_output=True, text=True)
+print("Returncode:", proc.returncode)
+print("--- stdout (last 4000 chars) ---")
+print(proc.stdout[-4000:])
+print("--- stderr (last 4000 chars) ---")
+print(proc.stderr[-4000:])
 
-Why this works: Python imports extension modules from directories present in sys.path. Adding the directory where the .so lives or copying the .so into an existing sys.path entry makes the module discoverable.
+Running with CUDA_LAUNCH_BLOCKING=1 ... (may produce big trace)
+Returncode: 1
+--- stdout (last 4000 chars) ---
+cannot import cuda implementation for inference, fallback to pytorch.
+testing 4 rates, using qp: 0, 21, 42, 63,
+cannot import cuda implementation for inference, fallback to pytorch.
 
-Pick Option 1 (temporary sys.path change) unless you prefer the .so to live at repo root. Run the import cell, then run the subprocess cell and paste the output if any new error appears — I’ll help interpret it.
+--- stderr (last 4000 chars) ---
+dex_size && "scatter gather kernel index out of bounds"failed.   /pytorch/aten/src/ATen/native/cuda/ScatterGatherKernel.cu:163: operator(): block: [472,0,0], thread: [85,0,0] Assertionidx_dim >= 0 && idx_dim < index_size && "scatter gather kernel index out of bounds"failed.   /pytorch/aten/src/ATen/native/cuda/ScatterGatherKernel.cu:163: operator(): block: [472,0,0], thread: [87,0,0] Assertionidx_dim >= 0 && idx_dim < index_size && "scatter gather kernel index out of bounds"failed.   /pytorch/aten/src/ATen/native/cuda/ScatterGatherKernel.cu:163: operator(): block: [472,0,0], thread: [89,0,0] Assertionidx_dim >= 0 && idx_dim < index_size && "scatter gather kernel index out of bounds"failed.   /pytorch/aten/src/ATen/native/cuda/ScatterGatherKernel.cu:163: operator(): block: [472,0,0], thread: [91,0,0] Assertionidx_dim >= 0 && idx_dim < index_size && "scatter gather kernel index out of bounds"failed.   /pytorch/aten/src/ATen/native/cuda/ScatterGatherKernel.cu:163: operator(): block: [472,0,0], thread: [93,0,0] Assertionidx_dim >= 0 && idx_dim < index_size && "scatter gather kernel index out of bounds"failed.   /pytorch/aten/src/ATen/native/cuda/ScatterGatherKernel.cu:163: operator(): block: [472,0,0], thread: [95,0,0] Assertionidx_dim >= 0 && idx_dim < index_size && "scatter gather kernel index out of bounds"` failed.
+
+0%|          | 0/212 [01:56<?, ?it/s]
+concurrent.futures.process._RemoteTraceback:
+"""
+Traceback (most recent call last):
+File "/home/work/dcvc/miniconda3/envs/dcvc_rt_env/lib/python3.12/concurrent/futures/process.py", line 264, in _process_worker
+r = call_item.fn(*call_item.args, **call_item.kwargs)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+File "/home/work/dcvc/DCVC_fresh/test_video.py", line 370, in worker
+result = run_one_point_with_stream(p_frame_net, i_frame_net, args)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+File "/home/work/dcvc/DCVC_fresh/test_video.py", line 279, in run_one_point_with_stream
+decoded = i_frame_net.decompress(bit_stream, sps, qp)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+File "/home/work/dcvc/DCVC_fresh/src/models/image_model.py", line 203, in decompress
+y_hat = self.decompress_prior_4x(params, self.y_spatial_prior_reduction,
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+File "/home/work/dcvc/DCVC_fresh/src/models/common_model.py", line 269, in decompress_prior_4x
+y_q_r = self.gaussian_encoder.decode_and_get_y(scales_r, dtype, device)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+File "/home/work/dcvc/DCVC_fresh/src/models/entropy_models.py", line 325, in decode_and_get_y
+return self.get_y(scales.shape, scales.numel(), dtype, device, skip_cond, indexes)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+File "/home/work/dcvc/DCVC_fresh/src/models/entropy_models.py", line 339, in get_y
+y = torch.index_select(val, 0, back_index) * skip_cond
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+torch.AcceleratorError: CUDA error: device-side assert triggered
+Compile with TORCH_USE_CUDA_DSA to enable device-side assertions.
+
+"""
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+File "/home/work/dcvc/DCVC_fresh/test_video.py", line 541, in <module>
+main()
+File "/home/work/dcvc/DCVC_fresh/test_video.py", line 514, in main
+result = obj.result()
+^^^^^^^^^^^^
+File "/home/work/dcvc/miniconda3/envs/dcvc_rt_env/lib/python3.12/concurrent/futures/_base.py", line 456, in result
+return self.__get_result()
+^^^^^^^^^^^^^^^^^^^
+File "/home/work/dcvc/miniconda3/envs/dcvc_rt_env/lib/python3.12/concurrent/futures/_base.py", line 401, in __get_result
+raise self._exception
+torch.AcceleratorError: CUDA error: device-side assert triggered
+Compile with TORCH_USE_CUDA_DSA to enable device-side assertions.
 
